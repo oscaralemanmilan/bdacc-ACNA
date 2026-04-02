@@ -104,14 +104,7 @@ section.main > div { padding-top: 0rem !important; }
 @st.cache_data # Aquesta decoració fa que la funció es cachegi, 
                # millorant el rendiment en recarregar la pàgina
 
-def load_data():
-    # Carrega el fitxer Excel local amb les dades d'accidents per allau
-    file_path = "data/bd_accidents_200726_net_c.xlsx"
-    if not os.path.exists(file_path):
-        st.error("❌ Fitxer no trobat.")
-        st.stop()
-
-    df = pd.read_excel(file_path, engine="openpyxl")
+def process_data(df):
     df.columns = df.columns.str.strip()  # neteja espais en blancs dels noms de columnes
 
     # Converteix coordenades a numèric: canvia ',' per '.' i transforma a float
@@ -160,7 +153,27 @@ def load_data():
 
     return df
 
-df = load_data()
+@st.cache_data
+def load_data(file_path="data/bd_accidents_200726_net_c.xlsx"):
+    if isinstance(file_path, str):
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Fitxer no trobat: {file_path}")
+        df = pd.read_excel(file_path, engine="openpyxl")
+    else:
+        # uploaded file
+        df = pd.read_excel(file_path, engine="openpyxl")
+    return process_data(df)
+
+@st.cache_data
+def load_from_gsheet(url):
+    import re
+    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+    if not match:
+        raise ValueError("Enlace inválido. Asegúrate de que sea un enlace compartido de Google Sheets.")
+    sheet_id = match.group(1)
+    csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
+    df = pd.read_csv(csv_url)
+    return process_data(df)
 
 
 # Llista global de variables categòriques per a l'anàlisi de composició
@@ -187,6 +200,80 @@ def map_center_zoom(d):
     return center, zoom
 
 
+def sidebar_error(msg):
+    st.sidebar.markdown(
+        f"<div style='background:#ffdddd; color:#a80000; padding:10px; border-radius:6px; border:1px solid #ff8080;'>{msg}</div>",
+        unsafe_allow_html=True
+    )
+
+
+def sidebar_success(msg):
+    st.sidebar.markdown(
+        f"<div style='background:#ddffdd; color:#1f7a1f; padding:10px; border-radius:6px; border:1px solid #80ff80;'>{msg}</div>",
+        unsafe_allow_html=True
+    )
+
+
+def sidebar_info(msg):
+    st.sidebar.markdown(
+        f"<div style='background:#e7f4ff; color:#155a8a; padding:10px; border-radius:6px; border:1px solid #8ec8ff;'>{msg}</div>",
+        unsafe_allow_html=True
+    )
+
+
+# --------------------------------------------------------
+# SIDEBAR ORIGEN DE DADES
+# --------------------------------------------------------
+st.sidebar.header("📊 Origen de dades")
+
+origen = st.sidebar.radio("Selecciona l'origen de les dades:", ["Local", "Local personalitzat", "Google Sheet"], key="origen")
+
+local_file = "data/bd_accidents_200726_net_c.xlsx"
+df = None
+
+if origen == "Local":
+    st.sidebar.markdown("**Mode Local per defecte**")
+    st.sidebar.write(f"Fitxer local per defecte: `{local_file}`")
+
+    if os.path.exists(local_file):
+        try:
+            df = load_data(local_file)
+            sidebar_success("Fitxer per defecte carregat correctament!")
+        except Exception as e:
+            sidebar_error(f"Error carregant el fitxer per defecte: {e}")
+    else:
+        sidebar_error("No s'ha trobat el fitxer per defecte!")
+
+elif origen == "Local personalitzat":
+    st.sidebar.markdown("**Mode Local personalitzat**")
+
+
+    uploaded_file = st.sidebar.file_uploader("Arrossega i deixa anar un fitxer Excel aquí", type=["xlsx"], key="uploader")
+    if uploaded_file is not None:
+        try:
+            df = load_data(uploaded_file)
+            sidebar_success("Nou fitxer local carregat!")
+        except Exception as e:
+            sidebar_error(f"No s'ha pogut llegir el fitxer: {e}")
+    else:
+        if df is None:
+            sidebar_error("No hi ha dades disponibles!")
+
+else:  # Google Sheet
+    st.sidebar.markdown("**Mode Google Sheet**")
+    url = st.sidebar.text_input("Enllaç a Google Sheet", key="gsheet_url")
+    if url:
+        try:
+            df = load_from_gsheet(url)
+            sidebar_success("Google Sheet carregat correctament!")
+        except Exception as e:
+            sidebar_error(f"Error lectura Google Sheet: {e}")
+    else:
+        if df is None:
+            sidebar_error("No hi ha dades disponibles!")
+
+if df is None:
+    st.stop()
 
 # --------------------------------------------------------
 # SIDEBAR FILTRES
