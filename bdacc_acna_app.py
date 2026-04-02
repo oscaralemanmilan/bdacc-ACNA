@@ -318,7 +318,12 @@ f_mida  = st.sidebar.multiselect("Mida d'allau", opts("Mida allau"))
 dff = df.copy()
 
 if metrica != "Accidents":
-    dff = dff[dff[metrica] > 0]
+    if metrica in dff.columns:
+        dff = dff[dff[metrica] > 0]
+    else:
+        # Metric selected but no column available en aquest dataset.
+        # Fer que el dataframe sigui buit per no provocar errors addicionals
+        dff = dff.iloc[0:0]
 
 filters = {
     "Temporada":f_temp, "Mes":f_mes, "Tipus activitat":f_act, "Grau de perill":f_per,
@@ -340,28 +345,29 @@ if "Latitud" in dff.columns and "Longitud" in dff.columns:
 # --------------------------------------------------------
 st.title("Base de Dades d'Accidents per Allau ACNA")
 
-c1, c2 = st.columns([1,1])
-with c1:
-    mostra_punts = st.checkbox("Mostrar punts 📍", True)
-with c2:
-    mostra_heatmap = st.checkbox("Mostrar mapa de calor 🔥", False)
-
-cpa, cpb, cpc, cpd = st.columns([1,1,1,1])
-with cpa:
-    radi = st.slider("Radi punt", 4, 80, 5)
-with cpb:
-    alpha_val = st.slider("Opacitat punts", 0.1, 1.0, 0.8)
-with cpc:
-    heat_radius = st.slider("Radi heatmap", 1, 40, 6)
-with cpd:
-    heat_intensity = st.slider("Intensitat", 0.2, 20.0, 10.0)
-
 if dff.empty:
     if not has_data:
-        st.warning("⚠️ No hi ha dades carregades!")
+        #st.warning("⚠️ No hi ha dades carregades!")
+        pass
     else:
         st.warning("⚠️ Cap punt coincideix amb els filtres.")
 else:
+    c1, c2 = st.columns([1,1])
+    with c1:
+        mostra_punts = st.checkbox("Mostrar punts 📍", True)
+    with c2:
+        mostra_heatmap = st.checkbox("Mostrar mapa de calor 🔥", False)
+
+    cpa, cpb, cpc, cpd = st.columns([1,1,1,1])
+    with cpa:
+        radi = st.slider("Radi punt", 4, 80, 5)
+    with cpb:
+        alpha_val = st.slider("Opacitat punts", 0.1, 1.0, 0.8)
+    with cpc:
+        heat_radius = st.slider("Radi heatmap", 1, 40, 6)
+    with cpd:
+        heat_intensity = st.slider("Intensitat", 0.2, 20.0, 10.0)
+
     center, zoom = map_center_zoom(dff)
     view = pdk.ViewState(latitude=center["lat"], longitude=center["lon"], zoom=zoom)
 
@@ -513,15 +519,15 @@ if not dff.empty:
 
 
 
-# --------------------------------------------------------
-# GRÀFIC TEMPORAL
-# --------------------------------------------------------
-st.markdown("<div style='margin-top:25px'></div>", unsafe_allow_html=True)
-
-# Gràfic temporal: evolució d'accidents i morts per temporada
-st.markdown("### Evolució temporal (Accidents i Morts)")
-
 if not dff.empty:
+    # --------------------------------------------------------
+    # GRÀFIC TEMPORAL
+    # --------------------------------------------------------
+    st.markdown("<div style='margin-top:25px'></div>", unsafe_allow_html=True)
+
+    # Gràfic temporal: evolució d'accidents i morts per temporada
+    st.markdown("### Evolució temporal (Accidents i Morts)")
+
     serie = (
         dff.dropna(subset=["Temporada"])
            .assign(Temp=lambda x: pd.to_numeric(x["Temporada"], errors="coerce"))
@@ -551,77 +557,73 @@ if not dff.empty:
 
 
 
-# --------------------------------------------------------
-# GRÀFICS DE COMPOSICIÓ COMPARATIUS (%) - VERSIÓ FINAL
-# --------------------------------------------------------
-# Cada gràfic mostra la distribució percentual d'una variable categòrica
-st.markdown("---")
-st.markdown(f"### Anàlisi de Variables Categòriques")
+if not dff.empty:
+    # --------------------------------------------------------
+    # GRÀFICS DE COMPOSICIÓ COMPARATIUS (%) - VERSIÓ FINAL
+    # --------------------------------------------------------
+    # Cada gràfic mostra la distribució percentual d'una variable categòrica
+    st.markdown("---")
+    st.markdown(f"### Anàlisi de Variables Categòriques")
 
-col_esquerra, col_dreta = st.columns(2)
+    col_esquerra, col_dreta = st.columns(2)
 
-# --- COLUMNA ESQUERRA (Grau de perill / Barres H) ---
-with col_esquerra:
-    # Index 0 = "Grau de perill" | Index 2 = "Barres (H)"
-    v1 = st.selectbox("Variable (Gràfic 1):", vars_percent, index=0, key="v_esq")
-    t1 = st.radio("Tipus (Gràfic 1):", ["Pastís", "Barres (V)", "Barres (H)"], index=2, key="t_esq", horizontal=True)
+    # --- COLUMNA ESQUERRA (Grau de perill / Barres H) ---
+    with col_esquerra:
+        # Index 0 = "Grau de perill" | Index 2 = "Barres (H)"
+        v1 = st.selectbox("Variable (Gràfic 1):", vars_percent, index=0, key="v_esq")
+        t1 = st.radio("Tipus (Gràfic 1):", ["Pastís", "Barres (V)", "Barres (H)"], index=2, key="t_esq", horizontal=True)
 
-    if not dff.empty:
         comp1 = dff[v1].value_counts(normalize=True).mul(100).reset_index()
         comp1.columns = [v1, 'Percent']
-        
+
         if t1 == "Pastís":
             fig1 = px.pie(comp1, names=v1, values="Percent", hole=0.45, template="plotly_dark")
         elif t1 == "Barres (V)":
             fig1 = px.bar(comp1, x=v1, y="Percent", template="plotly_dark", text_auto='.1f')
-            fig1.update_traces(marker_line_width=0) # TREU LES VORES
+            fig1.update_traces(marker_line_width=0)
         else:
             fig1 = px.bar(comp1, y=v1, x="Percent", orientation="h", template="plotly_dark", text_auto='.1f')
-            fig1.update_traces(marker_line_width=0) # TREU LES VORES
-        
+            fig1.update_traces(marker_line_width=0)
+
         fig1.update_layout(margin=dict(l=20, r=20, t=20, b=20))
         st.plotly_chart(fig1, use_container_width=True)
 
-# --- COLUMNA DRETA (Origen / Pastís) ---
-with col_dreta:
-    # Ajusta l'index de v2 segons la posició de "Origen" a la teva llista vars_percent (normalment és el 2)
-    v2 = st.selectbox("Variable (Gràfic 2):", vars_percent, index=2, key="v_dret")
-    t2 = st.radio("Tipus (Gràfic 2):", ["Pastís", "Barres (V)", "Barres (H)"], index=0, key="t_dret", horizontal=True)
+    # --- COLUMNA DRETA (Origen / Pastís) ---
+    with col_dreta:
+        v2 = st.selectbox("Variable (Gràfic 2):", vars_percent, index=2, key="v_dret")
+        t2 = st.radio("Tipus (Gràfic 2):", ["Pastís", "Barres (V)", "Barres (H)"], index=0, key="t_dret", horizontal=True)
 
-    if not dff.empty:
         comp2 = dff[v2].value_counts(normalize=True).mul(100).reset_index()
         comp2.columns = [v2, 'Percent']
-        
+
         if t2 == "Pastís":
             fig2 = px.pie(comp2, names=v2, values="Percent", hole=0.45, template="plotly_dark")
         elif t2 == "Barres (V)":
             fig2 = px.bar(comp2, x=v2, y="Percent", template="plotly_dark", text_auto='.1f')
-            fig2.update_traces(marker_line_width=0) # TREU LES VORES
+            fig2.update_traces(marker_line_width=0)
         else:
             fig2 = px.bar(comp2, y=v2, x="Percent", orientation="h", template="plotly_dark", text_auto='.1f')
-            fig2.update_traces(marker_line_width=0) # TREU LES VORES
-        
+            fig2.update_traces(marker_line_width=0)
+
         fig2.update_layout(margin=dict(l=20, r=20, t=20, b=20))
         st.plotly_chart(fig2, use_container_width=True)
 
+    # --------------------------------------------------------
+    # TAULA
+    # --------------------------------------------------------
+    with st.expander("📄 Dades filtrades"):
+        cols = [
+            "Data_str","Temporada","Lloc","Pais","Regio","Serralada","Orientacio",
+            "Altitud","Grau de perill","Mida allau","Tipus activitat",
+            "Origen","Desencadenant","Progressio",
+            "Morts","Ferits","Arrossegats","Latitud","Longitud"
+        ]
+        cols = [c for c in cols if c in dff.columns]
 
+        st.dataframe(dff[cols], use_container_width=True)
 
-# --------------------------------------------------------
-# TAULA
-# --------------------------------------------------------
-with st.expander("📄 Dades filtrades"):
-    cols = [
-        "Data_str","Temporada","Lloc","Pais","Regio","Serralada","Orientacio",
-        "Altitud","Grau de perill","Mida allau","Tipus activitat",
-        "Origen","Desencadenant","Progressio",
-        "Morts","Ferits","Arrossegats","Latitud","Longitud"
-    ]
-    cols = [c for c in cols if c in dff.columns]
-
-    st.dataframe(dff[cols], use_container_width=True)
-
-    csv = dff[cols].to_csv(index=False).encode("utf-8")
-    st.download_button("💾 Descarrega CSV", csv, "accidents_filtrats.csv")
+        csv = dff[cols].to_csv(index=False).encode("utf-8")
+        st.download_button("💾 Descarrega CSV", csv, "accidents_filtrats.csv")
 
 
 # --------------------------------------------------------
