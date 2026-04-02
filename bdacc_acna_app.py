@@ -224,6 +224,9 @@ def sidebar_info(msg):
 # --------------------------------------------------------
 # SIDEBAR ORIGEN DE DADES
 # --------------------------------------------------------
+# Mostrar logo a la barra lateral.
+#st.sidebar.image("assets/brand-acna-02.jpg", width=290)
+
 st.sidebar.header("📊 Origen de dades")
 
 origen = st.sidebar.radio("Selecciona l'origen de les dades:", ["Local", "Local personalitzat", "Google Sheet"], key="origen")
@@ -291,7 +294,7 @@ metrica = st.sidebar.selectbox(
 
 tipus_grafic_temporal = st.sidebar.radio(
     "Tipus de gràfic temporal",
-    ["Línia","Barres"], horizontal=True
+    ["Barres","Línia"], horizontal=True
 )
 
 f_temp  = st.sidebar.multiselect("Temporada", opts("Temporada"))
@@ -343,7 +346,12 @@ if "Latitud" in dff.columns and "Longitud" in dff.columns:
 # --------------------------------------------------------
 # TÍTOL + MAPA
 # --------------------------------------------------------
-st.title("Base de Dades d'Accidents per Allau ACNA")
+# Títol amb logo per fer-ho visualment atractiu
+col_titol, col_logo = st.columns([4, 1])
+with col_titol:
+    st.title("Base de Dades d'Accidents per Allau")
+with col_logo:
+    st.image("assets/brand-acna-02.jpg", width=200)
 
 if dff.empty:
     if not has_data:
