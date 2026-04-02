@@ -185,7 +185,7 @@ vars_percent = [
 
 def opts(col):
     # Retorna una llista d'opcions ordenades per una columna categòrica
-    if col not in df.columns:
+    if df is None or col not in df.columns:
         return []
     s = df[col].dropna().astype(str).str.strip()
     s = s.replace({"nan":"Desconegut","None":"Desconegut","": "Desconegut"})
@@ -273,7 +273,9 @@ else:  # Google Sheet
             sidebar_error("No hi ha dades disponibles!")
 
 if df is None:
-    st.stop()
+    df = pd.DataFrame()  # DataFrame buit per permetre que el codi continuï
+
+has_data = not df.empty
 
 # --------------------------------------------------------
 # SIDEBAR FILTRES
@@ -326,10 +328,11 @@ filters = {
 }
 
 for col, vals in filters.items():
-    if vals:
+    if vals and col in dff.columns:
         dff = dff[dff[col].isin(vals)]
 
-dff = dff.dropna(subset=["Latitud","Longitud"])
+if "Latitud" in dff.columns and "Longitud" in dff.columns:
+    dff = dff.dropna(subset=["Latitud","Longitud"])
 
 
 # --------------------------------------------------------
@@ -354,7 +357,10 @@ with cpd:
     heat_intensity = st.slider("Intensitat", 0.2, 20.0, 10.0)
 
 if dff.empty:
-    st.warning("⚠️ Cap punt coincideix amb els filtres.")
+    if not has_data:
+        st.warning("⚠️ No hi ha dades carregades!")
+    else:
+        st.warning("⚠️ Cap punt coincideix amb els filtres.")
 else:
     center, zoom = map_center_zoom(dff)
     view = pdk.ViewState(latitude=center["lat"], longitude=center["lon"], zoom=zoom)
