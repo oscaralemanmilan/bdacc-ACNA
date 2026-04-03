@@ -7,7 +7,7 @@ import plotly.express as px
 # --------------------------------------------------------
 # CONFIGURACIÓ DE LA PÀGINA + ESTILS
 # --------------------------------------------------------
-st.set_page_config(page_title="Base de Dades d'Accidents per Allau ACNA", layout="wide")
+st.set_page_config(page_title="Base de Dades d'Accidents per Allaus ACNA", layout="wide")
 
 # Estils personalitzats per a l'aplicació Streamlit: colors de tema, barra lateral i botons
 st.markdown("""
@@ -349,7 +349,7 @@ if "Latitud" in dff.columns and "Longitud" in dff.columns:
 # Títol amb logo per fer-ho visualment atractiu
 col_titol, col_logo = st.columns([4, 1])
 with col_titol:
-    st.title("Base de Dades d'Accidents per Allau")
+    st.title("BASE DE DADES D'ACCIDENTS PER ALLAUS - ACNA")
 with col_logo:
     st.image("assets/brand-acna-02.jpg", width=200)
 
