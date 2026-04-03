@@ -1,0 +1,406 @@
+"""
+Mòdul de Components d'Interfície d'Usuari per a BDACC ACNA
+===========================================================
+
+Funcionalitat:
+- Estils CSS personalitzats
+- Components de la barra lateral
+- Missatges d'error/success/informació
+- Layout i estructura de la pàgina
+
+Autor: Òscar Alemán-Milán © 2026
+"""
+
+import streamlit as st
+import os
+import pandas as pd
+from src.data_processing import load_data, load_from_gsheet, get_column_options
+from config.settings import COLORS, UI_CONFIG, HTML_TEMPLATES, DEFAULT_DATA_FILE
+
+
+def inject_custom_styles():
+    """
+    Injecta els estils CSS personalitzats a l'aplicació Streamlit.
+    """
+    st.markdown(f"""
+<style>
+/* Colors de fons per tema clar/fosc */
+.stApp[data-theme="dark"] {{ background-color: {COLORS['dark_bg']} !important; }}
+.stApp[data-theme="light"] {{ background-color: {COLORS['light_bg']} !important; }}
+
+/* Colors de text per tema clar/fosc */
+.stApp[data-theme="dark"] h1, .stApp[data-theme="dark"] h2, .stApp[data-theme="dark"] h3, 
+            .stApp[data-theme="dark"] h4, .stApp[data-theme="dark"] h5, .stApp[data-theme="dark"] p, 
+            .stApp[data-theme="dark"] label {{ color: #ffffff !important; }}
+.stApp[data-theme="light"] h1, .stApp[data-theme="light"] h2, .stApp[data-theme="light"] h3, 
+            .stApp[data-theme="light"] h4, .stApp[data-theme="light"] h5, .stApp[data-theme="light"] p, 
+            .stApp[data-theme="light"] label {{ color: #000000 !important; }}
+
+/* Barra lateral */
+.stApp[data-theme="dark"] [data-testid="stSidebar"] {{ background-color: {COLORS['sidebar_dark']} !important; }}
+[data-testid="stSidebar"][data-theme="dark"] * {{ color: #ffffff !important; }}
+[data-testid="stSidebar"][data-theme="light"] {{ background-color: {COLORS['sidebar_light']} !important; }}
+[data-testid="stSidebar"][data-theme="light"] * {{ color: #000000 !important; }}
+
+/* Camps d'entrada */
+.stApp[data-theme="dark"] div[data-baseweb="select"] > div,
+.stApp[data-theme="dark"] div[data-baseweb="input"] > div,
+.stApp[data-theme="dark"] div[data-baseweb="textarea"] > div {{
+    background-color: #1a1a1a !important; color: white !important;
+}}
+.stApp[data-theme="light"] div[data-baseweb="select"] > div,
+.stApp[data-theme="light"] div[data-baseweb="input"] > div,
+.stApp[data-theme="light"] div[data-baseweb="textarea"] > div {{
+    background-color: #ffffff !important; color: black !important;
+}}
+
+/* Botons */
+.stButton>button {{
+    width: 100%; border: 1px solid {COLORS['turquoise']};
+    background: transparent!important; color: {COLORS['turquoise']} !important; font-weight: bold;
+}}
+.stButton>button:hover {{ background: {COLORS['turquoise']} !important; color: black !important; }}
+
+/* Espaiat principal */
+section.main > div {{ padding-top: 0rem !important; }}
+
+/* Llegenda del mapa de calor */
+#heatmap-legend {{
+    position: fixed; right: 24px; bottom: 24px; z-index: 9999;
+    background: rgba(20,20,20,0.85); border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 6px; padding: 10px 12px; font-size: 12px; color: #eee;
+    backdrop-filter: blur(3px); box-shadow: 0 0 10px rgba(0,0,0,0.4);
+}}
+#heatmap-legend .title {{ font-weight: 600; margin-bottom: 6px; color: {COLORS['turquoise']}; }}
+#heatmap-legend .bar {{
+    height: 10px; width: 240px; border-radius: 3px; margin: 6px 0 4px 0;
+    background: linear-gradient(90deg,
+        #000000 0%,
+        #5e2b97 20%,
+        #b02bff 40%,
+        #ff5f3d 60%,
+        #ffbd3d 80%,
+        #fff26a 100%
+    );
+}}
+#heatmap-legend .ticks {{ display: flex; justify-content: space-between; color: #ccc; font-size: 11px; }}
+#heatmap-legend .note {{ color: #9bd7cf; font-size: 11px; margin-top: 4px; }}
+
+/* Caixes de KPI */
+.kpi-box {{ background: #12151c; border: 1px solid #263042; border-radius: 8px; padding: 12px 14px; }}
+.kpi-title {{ color: #9bd7cf; font-size: 12px; margin-bottom: 6px; text-transform: uppercase; }}
+.kpi-value {{ color: #ffffff; font-size: 22px; font-weight: 700; margin-bottom: 4px; }}
+.kpi-sub {{ color: #d0d4da; font-size: 12px; }}
+
+/* Peu de pàgina fixat */
+.footer-fixat {{
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    background-color: rgba(14, 17, 23, 0.85);
+    color: #888;
+    text-align: center;
+    padding: 5px 20px;
+    font-size: 0.8rem;
+    z-index: 999;
+    border-top: 1px solid #263042;
+    display: flex;
+    justify-content: space-between;
+}}
+
+/* Espai extra al final */
+.main .block-container {{
+    padding-bottom: 50px !important;
+}}
+      
+</style>
+""", unsafe_allow_html=True)
+
+
+def create_data_source_sidebar():
+    """
+    Crea la secció de selecció d'origen de dades a la barra lateral.
+    
+    Retorna:
+    --------
+    tuple
+        (df, has_data) - DataFrame carregat i booleà si hi ha dades
+    """
+    st.sidebar.header("📊 Origen de dades")
+    
+    origen = st.sidebar.radio(
+        "Selecciona l'origen de les dades:", 
+        UI_CONFIG['data_sources'], 
+        key="origen"
+    )
+    
+    local_file = DEFAULT_DATA_FILE
+    df = None
+    
+    if origen == "Local":
+        st.sidebar.markdown("**Mode Local per defecte**")
+        st.sidebar.write(f"Fitxer local per defecte: `{local_file}`")
+        
+        if os.path.exists(local_file):
+            try:
+                df = load_data(local_file)
+                sidebar_success("Fitxer per defecte carregat correctament!")
+            except Exception as e:
+                sidebar_error(f"Error carregant el fitxer per defecte: {e}")
+        else:
+            sidebar_error("No s'ha trobat el fitxer per defecte!")
+    
+    elif origen == "Local personalitzat":
+        st.sidebar.markdown("**Mode Local personalitzat**")
+        
+        uploaded_file = st.sidebar.file_uploader(
+            "Arrossega i deixa anar un fitxer Excel aquí", 
+            type=["xlsx"], 
+            key="uploader"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                df = load_data(uploaded_file)
+                sidebar_success("Nou fitxer local carregat!")
+            except Exception as e:
+                sidebar_error(f"No s'ha pogut llegir el fitxer: {e}")
+        else:
+            if df is None:
+                sidebar_error("No hi ha dades disponibles!")
+    
+    else:  # Google Sheet
+        st.sidebar.markdown("**Mode Google Sheet**")
+        url = st.sidebar.text_input("Enllaç a Google Sheet", key="gsheet_url")
+        
+        if url:
+            try:
+                df = load_from_gsheet(url)
+                sidebar_success("Google Sheet carregat correctament!")
+            except Exception as e:
+                sidebar_error(f"Error lectura Google Sheet: {e}")
+        else:
+            if df is None:
+                sidebar_error("No hi ha dades disponibles!")
+    
+    if df is None:
+        df = pd.DataFrame()  # DataFrame buit per permetre que el codi continuï
+    
+    has_data = not df.empty
+    return df, has_data
+
+
+def create_filters_sidebar(df):
+    """
+    Crea la secció de filtres a la barra lateral.
+    
+    Paràmetres:
+    -----------
+    df : pandas.DataFrame
+        DataFrame amb les dades
+    
+    Retorna:
+    --------
+    dict
+        Diccionari amb tots els filtres seleccionats
+    """
+    st.sidebar.header("🔍 Filtres")
+    
+    # Selector de mètrica
+    metrica = st.sidebar.selectbox(
+        "Variable a representar (filtra files):",
+        UI_CONFIG['metric_options'],
+        index=0
+    )
+    
+    # Tipus de gràfic temporal
+    tipus_grafic_temporal = st.sidebar.radio(
+        "Tipus de gràfic temporal",
+        UI_CONFIG['temporal_chart_types'], 
+        horizontal=True
+    )
+    
+    # Filtres categòrics
+    filters = {}
+    
+    # Filtres temporals
+    filters["Temporada"] = st.sidebar.multiselect("Temporada", get_column_options(df, "Temporada"))
+    filters["Mes"] = st.sidebar.multiselect("Mes", get_column_options(df, "Mes"))
+    
+    # Filtres d'activitat
+    filters["Tipus activitat"] = st.sidebar.multiselect("Tipus activitat", get_column_options(df, "Tipus activitat"))
+    
+    # Filtres de risc
+    filters["Grau de perill"] = st.sidebar.multiselect("Grau de perill", get_column_options(df, "Grau de perill"))
+    
+    # Filtres geogràfics
+    filters["Pais"] = st.sidebar.multiselect("País", get_column_options(df, "Pais"))
+    filters["Regio"] = st.sidebar.multiselect("Regió", get_column_options(df, "Regio"))
+    filters["Serralada"] = st.sidebar.multiselect("Serralada", get_column_options(df, "Serralada"))
+    filters["Orientacio"] = st.sidebar.multiselect("Orientació", get_column_options(df, "Orientacio"))
+    
+    # Filtres d'allau
+    filters["Origen"] = st.sidebar.multiselect("Origen allau", get_column_options(df, "Origen"))
+    filters["Progressio"] = st.sidebar.multiselect("Progressió", get_column_options(df, "Progressio"))
+    filters["Desencadenant"] = st.sidebar.multiselect("Desencadenant", get_column_options(df, "Desencadenant"))
+    filters["Material"] = st.sidebar.multiselect("Material", get_column_options(df, "Material"))
+    filters["Altitud"] = st.sidebar.multiselect("Altitud", get_column_options(df, "Altitud"))
+    filters["Mida allau"] = st.sidebar.multiselect("Mida d'allau", get_column_options(df, "Mida allau"))
+    
+    return {
+        'filters': filters,
+        'metrica': metrica,
+        'tipus_grafic_temporal': tipus_grafic_temporal
+    }
+
+
+def create_map_controls():
+    """
+    Crea els controls de configuració del mapa.
+    
+    Retorna:
+    --------
+    dict
+        Configuració del mapa seleccionada per l'usuari
+    """
+    c1, c2 = st.columns([1,1])
+    with c1:
+        mostra_punts = st.checkbox("Mostrar punts 📍", True)
+    with c2:
+        mostra_heatmap = st.checkbox("Mostrar mapa de calor 🔥", False)
+    
+    cpa, cpb, cpc, cpd = st.columns([1,1,1,1])
+    with cpa:
+        radi = st.slider("Radi punt", 4, 80, 5)
+    with cpb:
+        alpha_val = st.slider("Opacitat punts", 0.1, 1.0, 0.8)
+    with cpc:
+        heat_radius = st.slider("Radi heatmap", 1, 40, 6)
+    with cpd:
+        heat_intensity = st.slider("Intensitat", 0.2, 20.0, 10.0)
+    
+    return {
+        'show_points': mostra_punts,
+        'show_heatmap': mostra_heatmap,
+        'point_radius': radi,
+        'point_opacity': alpha_val,
+        'heat_radius': heat_radius,
+        'heat_intensity': heat_intensity
+    }
+
+
+def create_page_header():
+    """
+    Crea la capçalera de la pàgina amb títol i logo.
+    """
+    col_titol, col_logo = st.columns([4, 1])
+    with col_titol:
+        st.title(UI_CONFIG['app_title'])
+    with col_logo:
+        st.image(UI_CONFIG['logo_path'], width=UI_CONFIG['logo_width'])
+    
+    # Espai extra després de la capçalera
+    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+
+
+def create_composition_chart_controls(vars_percent):
+    """
+    Crea els controls per als gràfics de composició.
+    
+    Paràmetres:
+    -----------
+    vars_percent : list
+        Llista de variables categòriques disponibles
+    
+    Retorna:
+    --------
+    dict
+        Configuració dels gràfics seleccionada
+    """
+    col_esquerra, col_dreta = st.columns(2)
+    
+    with col_esquerra:
+        v1 = st.selectbox("Variable (Gràfic 1):", vars_percent, index=0, key="v_esq")
+        t1 = st.radio("Tipus (Gràfic 1):", UI_CONFIG['composition_chart_types'], index=2, key="t_esq", horizontal=True)
+    
+    with col_dreta:
+        v2 = st.selectbox("Variable (Gràfic 2):", vars_percent, index=2, key="v_dret")
+        t2 = st.radio("Tipus (Gràfic 2):", UI_CONFIG['composition_chart_types'], index=0, key="t_dret", horizontal=True)
+    
+    return {
+        'var1': v1,
+        'var2': v2,
+        'type1': t1,
+        'type2': t2
+    }
+
+
+def sidebar_error(msg):
+    """
+    Mostra un missatge d'error a la barra lateral.
+    
+    Paràmetres:
+    -----------
+    msg : str
+        Missatge d'error a mostrar
+    """
+    st.sidebar.markdown(
+        f"<div style='background:{COLORS['error_bg']}; color:{COLORS['error_text']}; padding:10px; border-radius:6px; border:1px solid {COLORS['error_border']};'>{msg}</div>",
+        unsafe_allow_html=True
+    )
+
+
+def sidebar_success(msg):
+    """
+    Mostra un missatge d'èxit a la barra lateral.
+    
+    Paràmetres:
+    -----------
+    msg : str
+        Missatge d'èxit a mostrar
+    """
+    st.sidebar.markdown(
+        f"<div style='background:{COLORS['success_bg']}; color:{COLORS['success_text']}; padding:10px; border-radius:6px; border:1px solid {COLORS['success_border']};'>{msg}</div>",
+        unsafe_allow_html=True
+    )
+
+
+def sidebar_info(msg):
+    """
+    Mostra un missatge d'informació a la barra lateral.
+    
+    Paràmetres:
+    -----------
+    msg : str
+        Missatge d'informació a mostrar
+    """
+    st.sidebar.markdown(
+        f"<div style='background:{COLORS['info_bg']}; color:{COLORS['info_text']}; padding:10px; border-radius:6px; border:1px solid {COLORS['info_border']};'>{msg}</div>",
+        unsafe_allow_html=True
+    )
+
+
+def create_footer():
+    """
+    Crea el peu de pàgina.
+    """
+    st.markdown("---")
+    st.markdown(HTML_TEMPLATES['footer'], unsafe_allow_html=True)
+
+
+def show_empty_data_message(has_data):
+    """
+    Mostra missatges apropiats quan no hi ha dades.
+    
+    Paràmetres:
+    -----------
+    has_data : bool
+        Indica si hi ha dades carregades
+    """
+    if not has_data:
+        # No hi ha dades carregades
+        pass
+    else:
+        # Hi ha dades però cap coincidència amb filtres
+        st.warning("⚠️ Cap punt coincideix amb els filtres.")
