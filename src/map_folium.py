@@ -343,8 +343,13 @@ def _add_points_layer(m, dff):
                 continue
             
             # Color segons víctimes (no segons grau de perill)
-            morts = int(pd.to_numeric(row.get('Morts', 0), errors='coerce') or 0)
-            ferits = int(pd.to_numeric(row.get('Ferits', 0), errors='coerce') or 0)
+            morts_value = pd.to_numeric(row.get('Morts', 0), errors='coerce')
+            ferits_value = pd.to_numeric(row.get('Ferits', 0), errors='coerce')
+            arrossegats_value = pd.to_numeric(row.get('Arrossegats', 0), errors='coerce')
+            
+            morts = 0 if pd.isna(morts_value) else int(morts_value)
+            ferits = 0 if pd.isna(ferits_value) else int(ferits_value)
+            arrossegats = 0 if pd.isna(arrossegats_value) else int(arrossegats_value)
             
             if morts > 0:
                 color = '#FF0000'  # Rojo si hay al menos un muerto
@@ -437,7 +442,7 @@ def _add_points_layer(m, dff):
 
                     <div><span style="color: #9ca3af;">Ferits:</span> <span style="color: #ffffff;">{ferits}</span></div>
 
-                    <div><span style="color: #9ca3af;">Arrossegats:</span> <span style="color: #ffffff;">{int(pd.to_numeric(row.get('Arrossegats', 0), errors='coerce') or 0)}</span></div>
+                    <div><span style="color: #9ca3af;">Arrossegats:</span> <span style="color: #ffffff;">{arrossegats}</span></div>
 
                 </div>
 

@@ -145,7 +145,7 @@ UI_CONFIG = {
     "composition_chart_types": ["Pastís", "Barres (V)", "Barres (H)"],
     
     # Opcions d'origen de dades
-    "data_sources": ["Local", "Local personalitzat", "Google Sheet"],
+    "data_sources": ["Google Sheets (Editable)", "Google Sheets (Lectura)", "Fitxer Local", "Fitxer Local Personalitzat"],
     
     # Rutes d'assets
     "logo_path": "assets/brand-acna-02.jpg",

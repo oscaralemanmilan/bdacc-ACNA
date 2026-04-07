@@ -17,6 +17,7 @@ Autor: Òscar Alemán-Milán © 2026
 import streamlit as st
 import pandas as pd
 import streamlit.components.v1 as components
+from streamlit_gsheets import GSheetsConnection
 
 # Importacions dels mòduls modulars
 from src.data_processing import VARS_PERCENT, apply_filters
@@ -74,7 +75,7 @@ def main():
         st.session_state.map_system = map_system
     
     # Barra lateral - Origen de dades
-    df, has_data = create_data_source_sidebar()
+    df, has_data, origen = create_data_source_sidebar()
     
     # Barra lateral - Filtres
     if has_data:

@@ -8,7 +8,7 @@ Funcionalitat:
 - Gràfics de composició (pastís, barres)
 - KPI Dashboard amb mètriques clau
 
-Autor: Òscar Alemán-Milán © 2026
+Autor: Òscar Alemán-Milán 
 """
 
 import pandas as pd
@@ -16,6 +16,11 @@ import streamlit as st
 import pydeck as pdk
 import plotly.express as px
 from config.settings import MAP_CONFIG, COLORS
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+from datetime import datetime
+import io
 
 
 def create_map_layer(dff, show_points=True, show_heatmap=False, 
@@ -307,11 +312,16 @@ def create_temporal_chart(dff, chart_type="Barres"):
         return None
     
     # Prepara les dades temporals
+    # Asegurar que Temporada se trata como texto correctamente sin decimales
+    dff_temp = dff.copy()
+    if 'Temporada' in dff_temp.columns:
+        # Convertir a string, eliminando decimales y manejando valores nulos
+        dff_temp['Temporada'] = dff_temp['Temporada'].fillna('Desconegut').astype(str).replace('\.0$', '', regex=True)
+    
     serie = (
-        dff.dropna(subset=["Temporada"])
-           .assign(Temp=lambda x: x["Temporada"].astype(str))  # Mantener como string
+        dff_temp.dropna(subset=["Temporada"])
            .groupby("Temporada", as_index=False)
-           .agg(Accidents=("Accidents","sum"),
+           .agg(Accidents=("id","count"),  # Contar registros por temporada
                 Morts=("Morts","sum"))
            .sort_values("Temporada")
     )
@@ -370,8 +380,27 @@ def create_composition_charts(dff, vars_percent, var1_index=0, var2_index=2,
     t2 = chart_types[type2_index]
     
     # Prepara dades per al primer gràfic
-    comp1 = dff[v1].value_counts(normalize=True).mul(100).reset_index()
-    comp1.columns = [v1, 'Percent']
+    # Para variables categóricas, incluir todos los valores (texto y números)
+    if dff[v1].dtype == 'object':
+        # Si es categórica (texto), usar value_counts directamente
+        comp1 = dff[v1].value_counts(normalize=True).mul(100).reset_index()
+        comp1.columns = [v1, 'Percent']
+        
+        # Ordenamiento especial para Mes (año hidrológico: septiembre a agosto)
+        if v1 == "Mes":
+            # Definir orden del año hidrológico
+            orden_hidrologico = ["Setembre", "Octubre", "Novembre", "Desembre", 
+                               "Gener", "Febrer", "Març", "Abril", 
+                               "Maig", "Juny", "Juliol", "Agost"]
+            
+            # Crear una columna de ordenamiento
+            comp1['orden'] = comp1[v1].map({mes: i for i, mes in enumerate(orden_hidrologico)})
+            # Ordenar según el año hidrológico
+            comp1 = comp1.sort_values('orden').drop('orden', axis=1)
+    else:
+        # Si es numérica, usar value_counts pero asegurar incluir todos
+        comp1 = dff[v1].value_counts(normalize=True).mul(100).reset_index()
+        comp1.columns = [v1, 'Percent']
     
     # Crea el primer gràfic
     if t1 == "Pastís":
@@ -384,8 +413,27 @@ def create_composition_charts(dff, vars_percent, var1_index=0, var2_index=2,
         fig1.update_traces(marker_line_width=0)
     
     # Prepara dades per al segon gràfic
-    comp2 = dff[v2].value_counts(normalize=True).mul(100).reset_index()
-    comp2.columns = [v2, 'Percent']
+    # Para variables categóricas, incluir todos los valores (texto y números)
+    if dff[v2].dtype == 'object':
+        # Si es categórica (texto), usar value_counts directamente
+        comp2 = dff[v2].value_counts(normalize=True).mul(100).reset_index()
+        comp2.columns = [v2, 'Percent']
+        
+        # Ordenamiento especial para Mes (año hidrológico: septiembre a agosto)
+        if v2 == "Mes":
+            # Definir orden del año hidrológico
+            orden_hidrologico = ["Setembre", "Octubre", "Novembre", "Desembre", 
+                               "Gener", "Febrer", "Març", "Abril", 
+                               "Maig", "Juny", "Juliol", "Agost"]
+            
+            # Crear una columna de ordenamiento
+            comp2['orden'] = comp2[v2].map({mes: i for i, mes in enumerate(orden_hidrologico)})
+            # Ordenar según el año hidrológico
+            comp2 = comp2.sort_values('orden').drop('orden', axis=1)
+    else:
+        # Si es numérica, usar value_counts pero asegurar incluir todos
+        comp2 = dff[v2].value_counts(normalize=True).mul(100).reset_index()
+        comp2.columns = [v2, 'Percent']
     
     # Crea el segon gràfic
     if t2 == "Pastís":
@@ -508,214 +556,209 @@ def render_kpi_boxes(kpi_data):
 
 def create_data_table(dff, original_file_path=None):
     """
-    Crea la taula de dades mantent el tipus de dada 'datetime' per a un ordenament correcte.
+    Crea la taula de dades amb funcionalitat completa d'edició i guardat.
+    Suporta Google Sheets com a base de dades principal.
     """
     if dff.empty:
         return
 
-    # 1. Neteja de columnes duplicades (mètode eficient)
-    df_visualizacion = dff.loc[:, ~dff.columns.duplicated()].copy()
-
-    # 2. Selecció de columnes segons l'Excel original
-    columnas_excel = [
-        'id', 'Codi', 'Temporada', 'Data', 'Lloc', 'Latitud', 'Longitud', 
-        'Tipus activitat', 'Pais', 'Regio', 'Serralada', 'Orientacio', 'Altitud', 
-        'Grup', 'Desenc', 'Arrossegats', 'Ferits', 'Morts', 'Grau de perill', 
-        'Mida allau', 'Origen', 'Progressio', 'Desencadenant', 'Neu', 'Material', 
-        'Observacions', 'Link', 'Fotos'
-    ]
-    columnas_mostrar = [col for col in columnas_excel if col in df_visualizacion.columns]
-    df_visualizacion = df_visualizacion[columnas_mostrar].copy()
-
-    # --- TRACTAMENT DE DATES (FORMATO AÑO-MES-DIA HH:MM:SS) ---
-    if 'Data' in df_visualizacion.columns:
-        
-        # 1. Conversión para formato estándar año-mes-dia hh:mm:ss
-        df_visualizacion['Data'] = pd.to_datetime(
-            df_visualizacion['Data'], 
-            errors='coerce'
-        )
-
-        # 2. Eliminar espais invisibles i valors estranys
-        df_visualizacion['Data'] = df_visualizacion['Data'].astype('datetime64[ns]')
-
-        # 3. Ordenar per data (més recents primer)
-        df_visualizacion = df_visualizacion.sort_values(
-            by='Data',
-            ascending=False,
-            na_position='last'
-        )
-    
-    # --- CORRECCIÓN GENERAL PARA ARROW: Convertir columnas object con números a strings ---
-    # Identificar columnas de tipo object que puedan contener números
-    for col in df_visualizacion.columns:
-        if df_visualizacion[col].dtype == 'object':
-            # Verificar si la columna contiene valores numéricos mezclados
-            sample_values = df_visualizacion[col].dropna().head(10)
-            if any(isinstance(val, (int, float)) for val in sample_values):
-                df_visualizacion[col] = df_visualizacion[col].astype(str)
-
-    # --- REORDENACIÓ VISUAL DE COLUMNES ---
-    columnas_importantes = ["id", "Codi", "Data", "Temporada", "Lloc", "Pais", "Regio", "Morts", "Ferits"]
-    cols_existentes = [c for c in columnas_importantes if c in df_visualizacion.columns]
-    resto_cols = [c for c in df_visualizacion.columns if c not in cols_existentes]
-    df_visualizacion = df_visualizacion[cols_existentes + resto_cols]
-
-    # --- GESTIÓ D'ESTAT (SESSION STATE) ---
+    # 1. Gestión de estado para persistencia
+    # Siempre actualizar df_actualizado con los datos filtrados actuales
+    st.session_state.df_actualizado = dff.copy()
     if 'editing_table' not in st.session_state:
         st.session_state.editing_table = False
-    
-    # Per evitar que les dades editades quedin "congelades" si canvien els filtres,
-    # actualitzem el session_state si no estem en mode edició activa.
-    if not st.session_state.editing_table:
-        st.session_state.edited_data = df_visualizacion.copy()
-
-    # --- INTERFÍCIA DE BOTONS AMB ESTILS PERSONALITZATS I FUNCIONALITAT ---
-    # CSS personalitzat per controlar padding, mida i color - Selectors més específics
-    # Hi ha estils que no reaccionen
-    # Estils que funcionen són box-shadow, border-radius i padding
-    st.markdown("""
-    <style>
-    /* Selectores més específics per botons de la taula */
-    [data-testid="stVerticalBlock"] div.stButton > button[data-testid="stBaseButton-secondary"],
-    [data-testid="stVerticalBlock"] div.stButton > button[data-testid="stBaseButton-primary"],
-    div.stButton > button[data-testid="stBaseButton-secondary"],
-    div.stButton > button[data-testid="stBaseButton-primary"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        color: white !important;
-        padding: 12px 12px !important;
-        border: none !important;
-        border-radius: 6px !important;
-        font-size: 10px !important;
-        font-weight: 600 !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 2px 4px rgba(102, 126, 234, 0.4) !important;
-        min-height: 24px !important;
-        line-height: 8px !important;
-    }
-    
-    /* Botón Guardar (primary) */
-    [data-testid="stVerticalBlock"] div.stButton > button[data-testid="stBaseButton-primary"],
-    div.stButton > button[data-testid="stBaseButton-primary"] {
-        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
-        box-shadow: 0 2px 4px rgba(17, 153, 142, 0.4) !important;
-    }
-    
-    /* Botón Cancelar (último secondary) */
-    [data-testid="stVerticalBlock"] div.stButton > button[data-testid="stBaseButton-secondary"]:last-child,
-    div.stButton > button[data-testid="stBaseButton-secondary"]:last-child {
-        background: linear-gradient(135deg, #ee0979 0%, #ff6a00 100%) !important;
-        box-shadow: 0 2px 4px rgba(238, 9, 121, 0.4) !important;
-    }
-    
-    /* Hover effects */
-    [data-testid="stVerticalBlock"] div.stButton > button:hover,
-    div.stButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 2px 6px rgba(102, 126, 234, 0.6) !important;
-    }
-    
-    [data-testid="stVerticalBlock"] div.stButton > button[data-testid="stBaseButton-primary"]:hover,
-    div.stButton > button[data-testid="stBaseButton-primary"]:hover {
-        box-shadow: 0 2px 6px rgba(17, 153, 142, 0.6) !important;
-    }
-    
-    [data-testid="stVerticalBlock"] div.stButton > button[data-testid="stBaseButton-secondary"]:last-child:hover,
-    div.stButton > button[data-testid="stBaseButton-secondary"]:last-child:hover {
-        box-shadow: 0 2px 6px rgba(238, 9, 121, 0.6) !important;
-    }
-    
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Variable para mostrar mensaje de éxito (usando session_state para persistencia)
     if 'mensaje_guardado' not in st.session_state:
         st.session_state.mensaje_guardado = ""
-    
-    col_btn, _ = st.columns([1, 2])  # Botons de la taula de dades
-    with col_btn:
-        if not st.session_state.editing_table:
-            if st.button("Editar"):
-                st.session_state.editing_table = True
-                st.session_state.mensaje_guardado = ""  # Limpiar mensaje al entrar en edición
-                st.rerun()
-        else:
-            c1, c2, c3 = st.columns(3)  # Tres botones en modo edición
-            with c1:
-                if st.button("Guardar", type="primary"):
-                    # Lógica de guardar los cambios editados (sin salir de edición)
-                    # 1. Capturar los datos editados del data_editor
-                    datos_editados = st.session_state.edited_data.copy()
-                    
-                    # 2. Actualizar el DataFrame original con los cambios
-                    df_visualizacion.update(datos_editados)
-                    
-                    # 3. Guardar en session_state para persistencia
-                    st.session_state.df_actualizado = df_visualizacion.copy()
-                    
-                    # 4. Mensaje de éxito
-                    st.session_state.mensaje_guardado = "Canvis desats correctament"
-                    
-                    # 5. MANTENER en modo edición (no salir)
-                    st.rerun()
-            with c2:
-                if st.button("Guardar i sortir", type="primary"):
-                    # Lógica de guardar y salir
-                    # 1. Capturar los datos editados del data_editor
-                    datos_editados = st.session_state.edited_data.copy()
-                    
-                    # 2. Actualizar el DataFrame original con los cambios
-                    df_visualizacion.update(datos_editados)
-                    
-                    # 3. Guardar en session_state para persistencia
-                    st.session_state.df_actualizado = df_visualizacion.copy()
-                    
-                    # 4. Mensaje de éxito
-                    st.session_state.mensaje_guardado = "Canvis desats i sortit correctament"
-                    
-                    # 5. Salir del modo edición
-                    st.session_state.editing_table = False
-                    st.rerun()
-            with c3:
-                if st.button("Cancel·lar"):
-                    # Lógica de cancelar (salir sin guardar cambios)
-                    st.session_state.editing_table = False
-                    st.session_state.mensaje_guardado = "Edició cancelada sense guardar canvis"
-                    st.rerun()
 
-    # --- RENDERITZAT AMB CONFIGURACIÓ DE COLUMNA ---
-    # Definim com volem que Streamlit mostri la data (format DD/MM/YYYY)
-    config_columnes = {
-        "Data": st.column_config.DateColumn(
-            "Data",
-            format="DD/MM/YYYY",  # Mostrar en formato día/mes/año
-            help="Data de l'accident"
-        )
+    # 2. Detectar origen de datos
+    data_source = st.session_state.get('data_source', 'none')
+    is_gsheets_editable = data_source == 'gsheets_editable'
+    is_local_source = data_source in ['local', 'local_custom']
+
+    # 3. Advertencia para edición local temporal
+    if is_local_source and st.session_state.editing_table:
+        st.warning("⚠️ L'edició de fitxers locals no es desa permanentment. Per desar canvis, utilitza la base de dades Google Sheets.")
+
+    # 4. CSS Personalizado para botones
+    st.markdown("""
+    <style>
+    div.stButton > button[data-testid="stBaseButton-primary"] {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+        color: white !important; border: none !important;
     }
-
+    .edit-mode-container div.stButton > button:not([data-testid="stBaseButton-primary"]) {
+        background: linear-gradient(135deg, #ee0979 0%, #ff6a00 100%) !important;
+        color: white !important; border: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+        
+    # 5. Botones de acción (Editar, Guardar, Exportar) - Diseño moderno
+    st.markdown("""
+    <style>
+    .action-buttons-container {
+        display: flex;
+        gap: 8px;
+        margin: 16px 0;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+    .action-btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(102, 126, 234, 0.1);
+        min-width: 120px;
+    }
+    .action-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(102, 126, 234, 0.2);
+    }
+    .action-btn.primary {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        box-shadow: 0 2px 4px rgba(17, 153, 142, 0.1);
+    }
+    .action-btn.primary:hover {
+        box-shadow: 0 4px 8px rgba(17, 153, 142, 0.2);
+    }
+    .action-btn.secondary {
+        background: linear-gradient(135deg, #6b7280 0%, #374151 100%);
+        box-shadow: 0 2px 4px rgba(107, 114, 128, 0.1);
+    }
+    .action-btn.secondary:hover {
+        box-shadow: 0 4px 8px rgba(107, 114, 128, 0.2);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+        
+    if not st.session_state.editing_table:
+        # Botones en modo lectura: Editar y Exportar
+        col1, col2 = st.columns([1, 1], gap="small")
+        with col1:
+            if st.button("📝 Editar", key="trigger_edit", use_container_width=True):
+                st.session_state.editing_table = True
+                st.rerun()
+        with col2:
+            if st.button("📥 Exportar Excel", key="export_excel", use_container_width=True):
+                export_to_excel(st.session_state.df_actualizado)
+    else:
+        # Botones en modo edición: Guardar, Guardar y salir, Cancelar
+        col1, col2, col3 = st.columns(3, gap="small")
+        with col1:
+            if st.button("💾 Guardar", type="primary", key="save", use_container_width=True):
+                # Guardar cambios
+                st.session_state.df_actualizado = st.session_state.temp_editor
+                
+                # Persistencia a Google Sheets si es editable
+                if is_gsheets_editable:
+                    try:
+                        conn = st.session_state.get('gsheets_conn')
+                        if conn:
+                            conn.update(st.session_state.df_actualizado)
+                            st.cache_data.clear()
+                            st.toast("✅ Cambios guardados a Google Sheets!")
+                        else:
+                            st.error("❌ Error: No hay conexión con Google Sheets")
+                    except Exception as e:
+                        st.error(f"❌ Error guardando en Google Sheets: {e}")
+                else:
+                    st.toast("✅ Cambios guardados localmente")
+                
+                st.rerun()
+                    
+        with col2:
+            if st.button("💾 Guardar y salir", type="primary", key="save_and_exit", use_container_width=True):
+                # Guardar cambios y salir
+                st.session_state.df_actualizado = st.session_state.temp_editor
+                
+                # Persistencia a Google Sheets si es editable
+                if is_gsheets_editable:
+                    try:
+                        conn = st.session_state.get('gsheets_conn')
+                        if conn:
+                            conn.update(st.session_state.df_actualizado)
+                            st.cache_data.clear()
+                            st.toast("✅ Cambios guardados a Google Sheets!")
+                        else:
+                            st.error("❌ Error: No hay conexión con Google Sheets")
+                    except Exception as e:
+                        st.error(f"❌ Error guardando en Google Sheets: {e}")
+                
+                st.session_state.editing_table = False
+                st.rerun()
+                    
+        with col3:
+            if st.button("✖ Cancelar", key="cancel", use_container_width=True):
+                st.session_state.editing_table = False
+                st.rerun()
+    config_cols = {"Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")}
+    
+    # Asegurar que columnas categóricas se mantengan como string para Arrow
+    df_display = st.session_state.df_actualizado.copy()
+    categorical_cols = ["Grau de perill", "Mida allau", "Origen", "Desencadenant", 
+                     "Tipus activitat", "Pais", "Regio", "Serralada", "Orientacio", 
+                     "Progressio", "Material"]
+    
+    for col in categorical_cols:
+        if col in df_display.columns:
+            df_display[col] = df_display[col].astype(str)
+    
     if st.session_state.editing_table:
-        st.subheader("📝 Dades Filtrades (Mode d'edició)")
-        # El data_editor respectarà el format i permetrà triar dates amb un calendari
-        st.session_state.edited_data = st.data_editor(
-            st.session_state.edited_data,
-            column_config=config_columnes,
+        st.info("Pots editar directament les cel·les de la taula.")
+        st.session_state.temp_editor = st.data_editor(
+            df_display,
+            column_config=config_cols,
             num_rows="dynamic",
-            width='stretch'
+            key="editor_principal"
         )
     else:
-        st.subheader(" Dades filtrades")
-        # El dataframe mostrarà la data correctament però l'ordenarà pel valor temporal real
-        st.dataframe(
-            df_visualizacion, 
-            column_config=config_columnes,
-            width='stretch'
-        )
+        st.dataframe(df_display, column_config=config_cols, width='stretch')
     
     # Mostrar mensaje de éxito debajo de la tabla
     if st.session_state.mensaje_guardado:
         st.success(st.session_state.mensaje_guardado)
         # Limpiar mensaje después de mostrarlo
         st.session_state.mensaje_guardado = ""
+
+
+def export_to_excel(df):
+    """
+    Exporta el DataFrame a Excel y lo descarga automáticamente.
+    
+    Paràmetres:
+    -----------
+    df : pandas.DataFrame
+        DataFrame a exportar
+    """
+    if df.empty:
+        st.warning("⚠️ No hay datos para exportar")
+        return
+    
+    try:
+        # Crear un buffer en memoria
+        output = io.BytesIO()
+        
+        # Escribir el DataFrame a Excel
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Accidents_Filtrats')
+        
+        # Descargar el archivo
+        st.download_button(
+            label="📥 Descargar Excel",
+            data=output.getvalue(),
+            file_name=f'accidents_filtrats_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
+            mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        st.success("✅ Datos preparados para exportación")
+        
+    except Exception as e:
+        st.error(f"❌ Error al exportar a Excel: {e}")
 
 
 def render_kpi_boxes(kpi_data):

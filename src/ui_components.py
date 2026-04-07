@@ -14,6 +14,7 @@ Autor: Òscar Alemán-Milán © 2026
 import streamlit as st
 import os
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 from src.data_processing import load_data, load_from_gsheet, get_column_options
 from config.settings import COLORS, UI_CONFIG, HTML_TEMPLATES, DEFAULT_DATA_FILE, MAP_CONFIG
 
@@ -125,7 +126,7 @@ def create_data_source_sidebar():
     Retorna:
     --------
     tuple
-        (df, has_data) - DataFrame carregat i booleà si hi ha dades
+        (df, has_data, data_source) - DataFrame carregat, booleà si hi ha dades, i font de dades
     """
     st.sidebar.header("📊 Origen de dades")
     
@@ -138,22 +139,103 @@ def create_data_source_sidebar():
     local_file = DEFAULT_DATA_FILE
     df = None
     
-    if origen == "Local":
-        st.sidebar.markdown("**Mode Local per defecte**")
+    # Inicializar variables para Google Sheets
+    conn = None
+    worksheet = None
+    
+    if origen == "Google Sheets (Editable)":
+        st.sidebar.markdown("**📝 Google Sheets (Editable)**")
+        st.sidebar.info("✅ Els canvis es guardaran automàticament al núvol")
+        st.sidebar.info("📁 Usant el spreadsheet configurat a secrets.toml")
+        
+        try:
+            # Conexión a Google Sheets usando el spreadsheet del secrets.toml
+            conn = st.connection("gsheets", type=GSheetsConnection)
+            worksheet = conn.read()  # Usará el spreadsheet configurado en secrets.toml
+            
+            if worksheet is not None and not worksheet.empty:
+                # Convertir columna 'Data' a datetime
+                if 'Data' in worksheet.columns:
+                    worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce')
+                    
+                    # Crear columna Mes para el filtro (extraído de data_processing.py)
+                    from .data_processing import MESOS_CAT
+                    worksheet['Mes'] = worksheet['Data'].dt.month.map(MESOS_CAT)
+                
+                df = worksheet
+                st.session_state.data_source = "gsheets_editable"
+                st.session_state.gsheets_conn = conn
+                sidebar_success("Google Sheets (Editable) carregat correctament!")
+            else:
+                sidebar_error("No s'han pogut carregar les dades de Google Sheets")
+        except Exception as e:
+            sidebar_error(f"Error connexió Google Sheets: {e}")
+    
+    elif origen == "Google Sheets (Lectura)":
+        st.sidebar.markdown("**📖 Google Sheets (Lectura)**")
+        st.sidebar.info("🔒 Mode només lectura")
+        
+        # Campo para introducir enlace completo del spreadsheet
+        spreadsheet_url = st.sidebar.text_input(
+            "Enllaç del Google Sheets",
+            value="",
+            help="Enganxa l'enllaç complet del Google Sheets. Ex: https://docs.google.com/spreadsheets/d/ID_AQUI/edit",
+            key="spreadsheet_url_readonly"
+        )
+        
+        if not spreadsheet_url:
+            st.sidebar.warning("⚠️ Cal introduir l'enllaç del spreadsheet per connectar")
+            df = pd.DataFrame()
+            st.session_state.data_source = "none"
+            return df, False, origen
+        
+        try:
+            # Extraer el ID del spreadsheet de la URL
+            if "/d/" in spreadsheet_url:
+                spreadsheet_id = spreadsheet_url.split("/d/")[1].split("/")[0]
+            else:
+                st.sidebar.error("❌ L'enllaç no és vàlid. Ha de contenir '/d/'")
+                df = pd.DataFrame()
+                st.session_state.data_source = "none"
+                return df, False, origen
+            
+            # Conexión a Google Sheets en modo lectura
+            conn = st.connection("gsheets", type=GSheetsConnection)
+            worksheet = conn.read(spreadsheet=spreadsheet_id)
+            
+            if worksheet is not None and not worksheet.empty:
+                # Convertir columna 'Data' a datetime
+                if 'Data' in worksheet.columns:
+                    worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce')
+                    
+                    # Crear columna Mes para el filtro (extraído de data_processing.py)
+                    from .data_processing import MESOS_CAT
+                    worksheet['Mes'] = worksheet['Data'].dt.month.map(MESOS_CAT)
+                
+                df = worksheet
+                st.session_state.data_source = "gsheets_readonly"
+                sidebar_success("Google Sheets (Lectura) carregat correctament!")
+            else:
+                sidebar_error("No s'han pogut carregar les dades de Google Sheets")
+        except Exception as e:
+            sidebar_error(f"Error connexió Google Sheets: {e}")
+    
+    elif origen == "Fitxer Local":
+        st.sidebar.markdown("**💾 Fitxer Local**")
         st.sidebar.write(f"Fitxer local per defecte: `{local_file}`")
         
         if os.path.exists(local_file):
             df = load_data(local_file)
             if df is not None:
-                # Guardar la ruta del fitxer actual al session state
+                st.session_state.data_source = "local"
                 st.session_state.current_file_path = local_file
                 sidebar_success("Fitxer per defecte carregat correctament!")
-            # Si df és None, l'error ja s'ha mostrat a load_data
         else:
             sidebar_error("No s'ha trobat el fitxer per defecte!")
     
-    elif origen == "Local personalitzat":
-        st.sidebar.markdown("**Mode Local personalitzat**")
+    elif origen == "Fitxer Local Personalitzat":
+        st.sidebar.markdown("**📁 Fitxer Local Personalitzat**")
+        st.sidebar.warning("⚠️ L'edició de fitxers locals no es desa permanentment. Per desar canvis, utilitza la base de dades Google Sheets.")
         
         uploaded_file = st.sidebar.file_uploader(
             "Arrossega i deixa anar un fitxer Excel aquí", 
@@ -164,32 +246,17 @@ def create_data_source_sidebar():
         if uploaded_file is not None:
             try:
                 df = load_data(uploaded_file)
+                st.session_state.data_source = "local_custom"
                 sidebar_success("Nou fitxer local carregat!")
             except Exception as e:
                 sidebar_error(f"No s'ha pogut llegir el fitxer: {e}")
-        else:
-            if df is None:
-                sidebar_error("No hi ha dades disponibles!")
-    
-    else:  # Google Sheet
-        st.sidebar.markdown("**Mode Google Sheet**")
-        url = st.sidebar.text_input("Enllaç a Google Sheet", key="gsheet_url")
-        
-        if url:
-            try:
-                df = load_from_gsheet(url)
-                sidebar_success("Google Sheet carregat correctament!")
-            except Exception as e:
-                sidebar_error(f"Error lectura Google Sheet: {e}")
-        else:
-            if df is None:
-                sidebar_error("No hi ha dades disponibles!")
     
     if df is None:
         df = pd.DataFrame()  # DataFrame buit per permetre que el codi continuï
+        st.session_state.data_source = "none"
     
     has_data = not df.empty
-    return df, has_data
+    return df, has_data, origen
 
 
 def create_filters_sidebar(df):

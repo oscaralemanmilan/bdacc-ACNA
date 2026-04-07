@@ -21,7 +21,7 @@ from datetime import datetime
 # Variables globals per a l'anàlisi de composició
 VARS_PERCENT = [
     "Grau de perill", "Desencadenant", "Origen", "Orientacio", 
-    "Mida allau", "Tipus activitat", "Pais", "Regio", "Serralada", "Altitud"
+    "Mida allau", "Tipus activitat", "Pais", "Regio", "Serralada", "Altitud", "Mes"
 ]
 
 # Columnes categòriques que necessiten neteja
@@ -294,6 +294,11 @@ def get_column_options(df, column_name):
         # Limpiar valores existentes que puedan tener .0 como string
         s = df[column_name].dropna().astype(str).str.replace('.0', '', regex=False)
         # MANTENER valores reales: sin reemplazo masivo
+        return sorted(s.unique().tolist(), key=lambda x: (x.lower()))
+    elif column_name == "Grau de perill":
+        # Tratamiento especial para Grau de perill como texto categórico
+        s = df[column_name].dropna().astype(str).str.strip()
+        # SIN reemplazo masivo a "Desconegut"
         return sorted(s.unique().tolist(), key=lambda x: (x.lower()))
     else:
         # MANTENER valores reales: solo limpiar espacios
