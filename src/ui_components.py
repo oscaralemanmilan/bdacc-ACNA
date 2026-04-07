@@ -15,7 +15,7 @@ import streamlit as st
 import os
 import pandas as pd
 from src.data_processing import load_data, load_from_gsheet, get_column_options
-from config.settings import COLORS, UI_CONFIG, HTML_TEMPLATES, DEFAULT_DATA_FILE
+from config.settings import COLORS, UI_CONFIG, HTML_TEMPLATES, DEFAULT_DATA_FILE, MAP_CONFIG
 
 
 def inject_custom_styles():
@@ -87,7 +87,7 @@ section.main > div {{ padding-top: 0rem !important; }}
 #heatmap-legend .note {{ color: #9bd7cf; font-size: 11px; margin-top: 4px; }}
 
 /* Caixes de KPI */
-.kpi-box {{ background: #12151c; border: 1px solid #263042; border-radius: 8px; padding: 12px 14px; }}
+.kpi-box {{ background: #12151c; border: 1px solid #263042; border-radius: 0px; padding: 12px 14px; }}
 .kpi-title {{ color: #9bd7cf; font-size: 12px; margin-bottom: 6px; text-transform: uppercase; }}
 .kpi-value {{ color: #ffffff; font-size: 22px; font-weight: 700; margin-bottom: 4px; }}
 .kpi-sub {{ color: #d0d4da; font-size: 12px; }}
@@ -143,11 +143,12 @@ def create_data_source_sidebar():
         st.sidebar.write(f"Fitxer local per defecte: `{local_file}`")
         
         if os.path.exists(local_file):
-            try:
-                df = load_data(local_file)
+            df = load_data(local_file)
+            if df is not None:
+                # Guardar la ruta del fitxer actual al session state
+                st.session_state.current_file_path = local_file
                 sidebar_success("Fitxer per defecte carregat correctament!")
-            except Exception as e:
-                sidebar_error(f"Error carregant el fitxer per defecte: {e}")
+            # Si df és None, l'error ja s'ha mostrat a load_data
         else:
             sidebar_error("No s'ha trobat el fitxer per defecte!")
     
@@ -252,6 +253,82 @@ def create_filters_sidebar(df):
         'filters': filters,
         'metrica': metrica,
         'tipus_grafic_temporal': tipus_grafic_temporal
+    }
+
+
+def create_map_style_controls():
+    """
+    Crea els controls d'estil de mapa i recentrat.
+    
+    Retorna:
+    --------
+    dict
+        Configuració d'estil seleccionada
+    """
+    st.sidebar.markdown("---")
+    st.sidebar.header("🗺️ Estils de Mapa")
+    
+    # Selector d'estil de mapa
+    map_style = st.sidebar.selectbox(
+        "Estil del mapa:",
+        list(MAP_CONFIG['available_styles'].keys()),
+        index=list(MAP_CONFIG['available_styles'].keys()).index(MAP_CONFIG['current_style'])
+    )
+    
+    # Botó per recentrar el mapa
+    center_map = st.sidebar.button("🎯 Centrar mapa")
+    
+    return {
+        'style': map_style,
+        'center_map': center_map
+    }
+
+
+def create_map_controls_with_styles():
+    """
+    Crea els controls del mapa incloent estils, integrats amb la vista del mapa.
+    
+    Retorna:
+    --------
+    dict
+        Configuració completa del mapa
+    """
+    # Crear 7 columnes per als controls
+    col1, col2, col3, col4, col5, col6, col7 = st.columns([1, 1, 1, 1, 1, 1, 1.5])
+    
+    with col1:
+        show_points = st.checkbox("📍 Punts", value=True)
+    
+    with col2:
+        point_radius = st.slider("Radi", 1, 80, MAP_CONFIG['default_point_radius'])
+    
+    with col3:
+        point_opacity = st.slider("Opacitat", 0.1, 1.0, MAP_CONFIG['default_point_opacity'])
+    
+    with col4:
+        show_heatmap = st.checkbox("🔥 Heatmap", value=False)
+    
+    with col5:
+        heat_radius = st.slider("Radi H", 1, 40, MAP_CONFIG['default_heat_radius'])
+    
+    with col6:
+        heat_intensity = st.slider("Intensitat", 0.2, 20.0, MAP_CONFIG['default_heat_intensity'])
+    
+    with col7:
+        map_style = st.selectbox(
+            "🗺️ Estil mapa",
+            list(MAP_CONFIG['available_styles'].keys()),
+            index=list(MAP_CONFIG['available_styles'].keys()).index(MAP_CONFIG['current_style'])
+        )
+    
+    return {
+        'style': map_style,
+        'show_points': show_points,
+        'show_heatmap': show_heatmap,
+        'point_radius': point_radius,
+        'point_opacity': point_opacity,
+        'heat_radius': heat_radius,
+        'heat_intensity': heat_intensity
     }
 
 
@@ -379,6 +456,74 @@ def sidebar_info(msg):
         f"<div style='background:{COLORS['info_bg']}; color:{COLORS['info_text']}; padding:10px; border-radius:6px; border:1px solid {COLORS['info_border']};'>{msg}</div>",
         unsafe_allow_html=True
     )
+
+
+def create_map_interaction_panel():
+    """
+    Panel simplificado para no interferir con el modo edición.
+    Solo muestra información de accidentes seleccionados, no gestiona clics.
+    """
+    # Solo mostramos información si hay un accidente SELECCIONADO (punto existente)
+    # pero NO si es un clic en el vacío, para dejar paso al modo edición.
+    if 'selected_accident' in st.session_state and st.session_state.selected_accident is not None:
+        accident = st.session_state.selected_accident
+        st.markdown("### 📍 Detalls de l'Accident")
+        
+        # Organitzar informació en columnes
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**📍 Localització**")
+            if 'Lloc' in accident:
+                st.write(accident['Lloc'])
+            if 'Pais' in accident:
+                st.write(f"País: {accident['Pais']}")
+            if 'Regio' in accident:
+                st.write(f"Regió: {accident['Regio']}")
+            if 'Serralada' in accident:
+                st.write(f"Serralada: {accident['Serralada']}")
+        
+        with col2:
+            st.markdown("**📅 Data i Risc**")
+            if 'Data' in accident:
+                # Formatear fecha directamente desde la columna Data
+                data_format = pd.to_datetime(accident['Data']).strftime('%d/%m/%Y')
+                st.write(f"Data: {data_format}")
+            if 'Temporada' in accident:
+                st.write(f"Temporada: {accident['Temporada']}")
+            if 'Grau de perill' in accident:
+                st.write(f"Perill: {accident['Grau de perill']}")
+            if 'Altitud' in accident:
+                st.write(f"Altitud: {accident['Altitud']}")
+        
+        with col3:
+            st.markdown("**⚠️ Allau i Víctimes**")
+            if 'Mida allau' in accident:
+                st.write(f"Mida: {accident['Mida allau']}")
+            if 'Morts' in accident:
+                st.write(f"Morts: {accident['Morts']}")
+            if 'Ferits' in accident:
+                st.write(f"Ferits: {accident['Ferits']}")
+            if 'Arrossegats' in accident:
+                st.write(f"Arrossegats: {accident['Arrossegats']}")
+        
+        # Detalls addicionals
+        with st.expander("📋 Veure tots els detalls"):
+            # Mostrar totes las columnas disponibles
+            for key, value in accident.items():
+                if key not in ['Lloc', 'Pais', 'Regio', 'Serralada', 'Data', 
+                               'Temporada', 'Grau de perill', 'Altitud', 'Mida allau',
+                               'Morts', 'Ferits', 'Arrossegats']:
+                    st.write(f"**{key}:** {value}")
+        
+        # Botó d'edició
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 2, 1])
+        with col_btn2:
+            st.button("📝 Editar accident", key="edit_accident", width='stretch')
+    else:
+        # Si no hay accidente seleccionado, no mostramos nada aquí para no ensuciar la UI
+        # El formulario de "Nuevo accidente" ya aparecerá desde el archivo principal
+        pass
 
 
 def create_footer():

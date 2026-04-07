@@ -8,13 +8,15 @@ Funcionalitat:
 - Aplicació de filtres
 - Validació de coordenades i dates
 
-Autor: Òscar Alemán-Milán © 2026
+Autor: Òscar Alemán-Milán 
 """
 
 import os
 import pandas as pd
+import numpy as np
 import streamlit as st
 import re
+from datetime import datetime
 
 # Variables globals per a l'anàlisi de composició
 VARS_PERCENT = [
@@ -64,11 +66,10 @@ def process_data(df):
     ---------------------------
     1. Neteja de noms de columnes (elimina espais)
     2. Conversió de coordenades (coma → punt decimal)
-    3. Filtratge geogràfic (Península Ibèrica)
-    4. Normalització de dates (dd/mm/yyyy prioritari)
-    5. Creació de columnes auxiliars (Data_str, Any, Mes)
-    6. Conversió de columnes numèriques a enters
-    7. Estandardització de valors categòrics buits
+    3. Normalització de dates (dd/mm/yyyy prioritari)
+    4. Creació de columnes auxiliars (Any, Mes)
+    5. Conversió de columnes numèriques a enters
+    6. Estandardització de valors categòrics buits
     """
     
     # 1. Neteja de noms de columnes
@@ -79,41 +80,86 @@ def process_data(df):
         df[col] = df[col].astype(str).str.replace(",", ".", regex=False)
         df[col] = pd.to_numeric(df[col], errors="coerce")
     
-    # 3. Filtratge geogràfic - Península Ibèrica
+    # 3. ELIMINADO: Filtratge geogràfic - Ara es mostren tots els punts
+    # No s'aplica cap filtre geogràfic, es processen totes les coordenades vàlides
     df = df.dropna(subset=["Latitud","Longitud"])
-    df = df[(df["Latitud"] > GEO_BOUNDS["lat_min"]) & 
-            (df["Latitud"] < GEO_BOUNDS["lat_max"])]
-    df = df[(df["Longitud"] > GEO_BOUNDS["lon_min"]) & 
-            (df["Longitud"] < GEO_BOUNDS["lon_max"])]
     
-    # 4. Normalització de dates
-    raw = df["Data"].astype(str)
-    # Primer intenta dia/mes/any (format europeu)
-    d1 = pd.to_datetime(raw, errors="coerce", dayfirst=True)
-    # Per a les que fallen, intenta mes/dia/any (format americà)
-    mask = d1.isna()
-    d2 = pd.to_datetime(raw[mask], errors="coerce", dayfirst=False)
-    d1.loc[mask] = d2
-    df["Data"] = d1
+    # 4. Normalització de dates - ELIMINADO: Ahora se hace en load_data con parse_dates
+    # raw = df["Data"].astype(str)
+    # # Primer intenta dia/mes/any (format europeu)
+    # d1 = pd.to_datetime(raw, errors="coerce", dayfirst=True)
+    # # Per a les que fallen, intenta mes/dia/any (format americà)
+    # mask = d1.isna()
+    # d2 = pd.to_datetime(raw[mask], errors="coerce", dayfirst=False)
+    # d1.loc[mask] = d2
+    # df["Data"] = d1
     
-    # 5. Columnes auxiliars per a dates
-    df["Data_str"] = df["Data"].dt.strftime("%d/%m/%Y").fillna("Desconegut")
+    # 5. Columnes auxiliars (solo las necesarias)
     df["Any"] = df["Data"].dt.year
     df["Mes"] = df["Data"].dt.month.map(MESOS_CAT)
     df["Accidents"] = 1  # Cada fila és un accident
+    
+    # Eliminar filas con fechas NaT para evitar problemas
+    df = df.dropna(subset=["Data"])
     
     # 6. Conversió de columnes numèriques a enters
     for col in NUMERIC_COLS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
     
-    # 7. Estandardització de categories buides
+    # 6.1. Afegir categoria "Sense danys" per a accidents sense morts ni ferits
+    if "Morts" in df.columns and "Ferits" in df.columns:
+        # Crear columna de categoría de daños
+        df["Categoria_danys"] = "Amb danys"  # Valor por defecte
+        # Marcar como "Sense danys" si no hay muertos ni heridos
+        df.loc[(df["Morts"] == 0) & (df["Ferits"] == 0), "Categoria_danys"] = "Sense danys"
+    
+    # 7. Estandardització de categories (mantener valores reales, sin reemplazos innecesarios)
     for col in CAT_COLS:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.strip()
-            df[col] = df[col].replace({"nan":"Desconegut","None":"Desconegut","": "Desconegut"})
+            # Tratamiento especial para Temporada (limpiar .0 pero mantener vacíos)
+            if col == "Temporada":
+                # Limpiar valores existentes que puedan tener .0 como string
+                s = df[col].astype(str).str.replace('.0', '', regex=False)
+                # MANTENER valores reales: None, "", NaN sin reemplazar
+                df[col] = s
+            else:
+                # MANTENER valores reales: solo limpiar espacios
+                df[col] = df[col].astype(str).str.strip()
+                # SIN reemplazo masivo a "Desconegut"
     
     return df
+
+
+@st.cache_data
+def load_data_smart(file_path="data/bd_accidents_200726_net_c.xlsx"):
+    """
+    Carrega dades amb prioritat: arxiu editat > arxiu original.
+    
+    Paràmetres:
+    ----------
+    file_path : str
+        Ruta del fitxer original (per defecte)
+    
+    Retorna:
+    --------
+    pandas.DataFrame
+        Dades processades
+    """
+    from pathlib import Path
+    
+    # Primer verificar si existeix l'arxiu editat
+    edited_file = Path("data/bdacc_data_edited.csv")
+    if edited_file.exists():
+        try:
+            df = pd.read_csv(edited_file, encoding='utf-8')
+            return process_data(df)
+        except Exception as e:
+            print(f"Error carregant arxiu editat: {e}")
+            # Si falla, continuar amb l'arxiu original
+    
+    # Carregar arxiu original
+    return load_data(file_path)
 
 
 @st.cache_data
@@ -122,22 +168,31 @@ def load_data(file_path="data/bd_accidents_200726_net_c.xlsx"):
     Carrega dades des d'un fitxer Excel local.
     
     Paràmetres:
-    -----------
-    file_path : str o UploadedFile
-        Ruta al fitxer Excel o objecte de fitxer pujat
+    ----------
+    file_path : str or UploadedFile
+        Ruta del fitxer Excel o objecteUploadedFile de Streamlit
     
     Retorna:
     --------
     pandas.DataFrame
-        Dades processades i netejades
+        Dades processades
     """
     if isinstance(file_path, str):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Fitxer no trobat: {file_path}")
         df = pd.read_excel(file_path, engine="openpyxl")
-    else:
-        # Fitxer pujat mitjançant Streamlit
-        df = pd.read_excel(file_path, engine="openpyxl")
+        
+        # SOLUCIÓN PARA FORMATO AÑO-MES-DIA HH:MM:SS
+        if "Data" in df.columns:
+            
+            # Conversión para formato estándar año-mes-dia hh:mm:ss
+            df["Data"] = pd.to_datetime(
+                df["Data"],
+                errors="coerce"
+            )
+    
+    if df is None:
+        return None
     
     return process_data(df)
 
@@ -234,11 +289,17 @@ def get_column_options(df, column_name):
     if df is None or column_name not in df.columns:
         return []
     
-    s = df[column_name].dropna().astype(str).str.strip()
-    s = s.replace({"nan":"Desconegut","None":"Desconegut","": "Desconegut"})
-    
-    # Ordena posant "Desconegut" al final
-    return sorted(s.unique().tolist(), key=lambda x: (x=="Desconegut", x.lower()))
+    # Tratamiento especial para Temporada (limpiar .0 pero mantener vacíos)
+    if column_name == "Temporada":
+        # Limpiar valores existentes que puedan tener .0 como string
+        s = df[column_name].dropna().astype(str).str.replace('.0', '', regex=False)
+        # MANTENER valores reales: sin reemplazo masivo
+        return sorted(s.unique().tolist(), key=lambda x: (x.lower()))
+    else:
+        # MANTENER valores reales: solo limpiar espacios
+        s = df[column_name].dropna().astype(str).str.strip()
+        # SIN reemplazo masivo a "Desconegut"
+        return sorted(s.unique().tolist(), key=lambda x: (x.lower()))
 
 
 def validate_data_structure(df):

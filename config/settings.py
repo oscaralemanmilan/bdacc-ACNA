@@ -15,7 +15,7 @@ PAGE_CONFIG = {
     "layout": "wide"
 }
 
-DEFAULT_DATA_FILE = "data/bd_accidents_200726_net_c.xlsx"
+DEFAULT_DATA_FILE = "data/bd_accidents_200726_net_c.xlsx"  # Pot tenir problemes de permisos
 
 # --------------------------------------------------------
 # COLORS I ESTILS
@@ -60,8 +60,24 @@ MAP_CONFIG = {
     "default_center": {"lat": 40.0, "lon": -3.5},
     "default_zoom": 4.9,
     
-    # Estil del mapa base
-    "base_map": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+    # Estils de mapa disponibles (sense API)
+    "available_styles": {
+        "Fosc": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
+        "Clar": "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+        "Voyager": "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+        "Topogràfic": "stamen_terrain"  # Especial per TileLayer
+    },
+    
+    # URLs per TileLayer (mapes que necessiten capes addicionals)
+    "tile_layer_urls": {
+        "stamen_terrain": "https://tile.opentopomap.org/{z}/{x}/{y}.png",
+        "satelite": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        "ign_raster": "https://tms-mapa-raster.ign.es/1.0.0/mapa-raster/{z}/{x}/{y}.jpeg",
+        "test_osm": "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    },
+    
+    # Estil actual per defecte
+    "current_style": "Fosc",
     
     # Configuració per defecte del mapa
     "default_point_radius": 5,
