@@ -42,6 +42,9 @@ def inject_custom_styles():
 [data-testid="stSidebar"][data-theme="dark"] * {{ color: #ffffff !important; }}
 [data-testid="stSidebar"][data-theme="light"] {{ background-color: {COLORS['sidebar_light']} !important; }}
 [data-testid="stSidebar"][data-theme="light"] * {{ color: #000000 !important; }}
+/* Reduir padding del sidebar */
+[data-testid="stSidebar"] > div {{ padding: 1rem 0.5rem !important; }}
+[data-testid="stSidebar"] > section {{ padding: 0 0.5rem !important; }}
 
 /* Camps d'entrada */
 .stApp[data-theme="dark"] div[data-baseweb="select"] > div,
@@ -128,16 +131,6 @@ def create_data_source_sidebar():
     tuple
         (df, has_data, data_source) - DataFrame carregat, booleà si hi ha dades, i font de dades
     """
-    # Selector de Sistema de Mapas
-    st.sidebar.header("🗺️ Sistema de Mapes")
-    map_system = st.sidebar.selectbox(
-        "Tecnologia de mapa",
-        ["Pydeck (Visualització)", "Folium (Avançat)"],
-        index=0 if st.session_state.get('map_system', 'Folium (Avançat)') == 'Pydeck' else 1
-    )
-    st.session_state.map_system = map_system
-    
-    st.sidebar.markdown("---")
     st.sidebar.header("📊 Origen de dades")
     
     origen = st.sidebar.radio(
@@ -265,6 +258,16 @@ def create_data_source_sidebar():
         df = pd.DataFrame()  # DataFrame buit per permetre que el codi continuï
         st.session_state.data_source = "none"
     
+    # Selector de Sistema de Mapes
+    st.sidebar.markdown("---")
+    st.sidebar.header("🗺️ Sistema de Mapes")
+    map_system = st.sidebar.selectbox(
+        "Tecnologia de mapa",
+        ["Pydeck (Visualització)", "Folium (Avançat)"],
+        index=0 if st.session_state.get('map_system', 'Folium (Avançat)') == 'Pydeck' else 1
+    )
+    st.session_state.map_system = map_system
+    
     has_data = not df.empty
     return df, has_data, origen
 
@@ -276,14 +279,15 @@ def create_filters_sidebar(df):
     Paràmetres:
     -----------
     df : pandas.DataFrame
-        DataFrame amb les dades
+        Dades filtrades per mostrar
     
     Retorna:
     --------
     dict
         Diccionari amb tots els filtres seleccionats
     """
-    st.sidebar.header("🔍 Filtres")
+    st.sidebar.markdown("---")
+    st.sidebar.header("🔍 Filtre de variables")
     
     # Selector de mètrica
     metrica = st.sidebar.selectbox(
