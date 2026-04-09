@@ -102,11 +102,17 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
     edit_control = MacroElement()
     edit_control._template = Template(f'''
         {{% macro script(this, kwargs) %}}
+        // Usem 'topright' però forçarem la posició amb CSS
         var editControl = L.control({{position: 'topright'}});
         
         editControl.onAdd = function (map) {{
             var div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-            div.innerHTML = '<a title="Mode Edició" style="background-color: {initial_bg}; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: {initial_color}; border: 1px solid #ccc;"><i class="fa fa-map-marker" id="edit-icon"></i></a>';
+            
+            // Reduïm el margin per igualar l'espai entre botons
+            div.style.marginTop = '10px'; 
+            div.style.marginRight = '10px'; // Una mica separat de la vora
+            
+            div.innerHTML = '<a title="Mode Edició" style="background-color: {initial_bg}; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: {initial_color}; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px;"><i class="fa fa-map-marker" id="edit-icon"></i></a>';
             
             var editMode = {initial_active};
             
@@ -175,7 +181,6 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
         editControl.addTo({{{{this._parent.get_name()}}}});
         {{% endmacro %}}
     ''')
-    m.add_child(edit_control)
     
     # Coordenadas y zoom de España
     lat_home, lon_home = 40.4637, -3.7492  # Centro de España
@@ -209,7 +214,7 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
         """)
         m.get_root().add_child(font_awesome_css)
         
-        # CSS per reduir la font dels crèdits del mapa - sempre carregat
+        # CSS per reduir la font dels crèdits, selector de capes i escala del mapa - sempre carregat
         credits_css = folium.Element("""
         <style>
         .leaflet-control-attribution {
@@ -229,6 +234,23 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
         }
         .leaflet-control-attribution-prefix {
             display: none !important;
+        }
+        /* Reduir font del selector de capes */
+        .leaflet-control-layers {
+            font-size: 12px !important;
+        }
+        .leaflet-control-layers label {
+            font-size: 12px !important;
+            line-height: 12px !important;
+        }
+        .leaflet-control-layers input {
+            transform: scale(0.8);
+            margin-right: 3px;
+        }
+        /* Reduir font de l'escala */
+        .leaflet-control-scale {
+            font-size: 10px !important;
+            line-height: 12px !important;
         }
         </style>
         """)
@@ -251,6 +273,10 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
                 'popup': 'Mostrar la meva ubicació actual'
             }
         ).add_to(m)
+    
+    # 4. FINALMENT afegeix el control d'edició
+    # Com que és l'últim, el seu "marginTop: 150px" comptarà des del sostre del mapa
+    m.add_child(edit_control)
     
     # --- CORRECCIÓN MARCADOR DE BORRADOR ---
     if new_point and isinstance(new_point, dict):

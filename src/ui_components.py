@@ -128,6 +128,16 @@ def create_data_source_sidebar():
     tuple
         (df, has_data, data_source) - DataFrame carregat, booleà si hi ha dades, i font de dades
     """
+    # Selector de Sistema de Mapas
+    st.sidebar.header("🗺️ Sistema de Mapes")
+    map_system = st.sidebar.selectbox(
+        "Tecnologia de mapa",
+        ["Pydeck (Visualització)", "Folium (Avançat)"],
+        index=0 if st.session_state.get('map_system', 'Folium (Avançat)') == 'Pydeck' else 1
+    )
+    st.session_state.map_system = map_system
+    
+    st.sidebar.markdown("---")
     st.sidebar.header("📊 Origen de dades")
     
     origen = st.sidebar.radio(
@@ -145,8 +155,8 @@ def create_data_source_sidebar():
     
     if origen == "Google Sheets (Editable)":
         st.sidebar.markdown("**📝 Google Sheets (Editable)**")
-        st.sidebar.info("✅ Els canvis es guardaran automàticament al núvol")
-        st.sidebar.info("📁 Usant el spreadsheet configurat a secrets.toml")
+        st.sidebar.info("☁ Els canvis es desaran al núvol")
+        
         
         try:
             # Conexión a Google Sheets usando el spreadsheet del secrets.toml
@@ -156,7 +166,7 @@ def create_data_source_sidebar():
             if worksheet is not None and not worksheet.empty:
                 # Convertir columna 'Data' a datetime
                 if 'Data' in worksheet.columns:
-                    worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce')
+                    worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce', dayfirst=True)
                     
                     # Crear columna Mes para el filtro (extraído de data_processing.py)
                     from .data_processing import MESOS_CAT
@@ -165,7 +175,7 @@ def create_data_source_sidebar():
                 df = worksheet
                 st.session_state.data_source = "gsheets_editable"
                 st.session_state.gsheets_conn = conn
-                sidebar_success("Google Sheets (Editable) carregat correctament!")
+                sidebar_success("✅ Connexió a Google Sheets")
             else:
                 sidebar_error("No s'han pogut carregar les dades de Google Sheets")
         except Exception as e:
@@ -206,7 +216,7 @@ def create_data_source_sidebar():
             if worksheet is not None and not worksheet.empty:
                 # Convertir columna 'Data' a datetime
                 if 'Data' in worksheet.columns:
-                    worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce')
+                    worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce', dayfirst=True)
                     
                     # Crear columna Mes para el filtro (extraído de data_processing.py)
                     from .data_processing import MESOS_CAT

@@ -23,7 +23,7 @@ from streamlit_gsheets import GSheetsConnection
 from src.data_processing import VARS_PERCENT, apply_filters
 from src.visualization import (
     create_map_layer, create_temporal_chart, create_composition_charts,
-    create_kpi_dashboard, render_kpi_boxes, create_data_table,
+    create_kpi_dashboard, ensure_pyarrow_compatibility, render_kpi_boxes, create_data_table,
     get_simplified_tooltip_html
 )
 from src.ui_components import (
@@ -61,18 +61,6 @@ def main():
     
     # Capçalera de la pàgina
     create_page_header()
-    
-    # Selector de sistema de mapes
-    st.markdown("### 🗺️ Sistema de Mapes")
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        map_system = st.selectbox(
-            "Tecnologia de mapa",
-            ["Pydeck (Original)", "Folium (Avançat)"],
-            index=0 if st.session_state.map_system == 'Pydeck' else 1
-        )
-        st.session_state.map_system = map_system
     
     # Barra lateral - Origen de dades
     df, has_data, origen = create_data_source_sidebar()
@@ -166,8 +154,24 @@ def render_folium_map_section(dff):
         if "map_edit_mode_active" in output:
             new_val = output["map_edit_mode_active"]
             if new_val != st.session_state.edit_mode:
-                st.session_state.edit_mode = new_val
-                st.rerun()
+                # Si se está activando el modo edición, minimizar mapa si está en pantalla completa
+                if new_val and not st.session_state.edit_mode:
+                    # Activar modo edición - minimizar mapa si está en pantalla completa
+                    st.session_state.edit_mode = new_val
+                    st.session_state.force_minimize_map = True
+                    st.rerun()
+                elif not new_val and st.session_state.edit_mode:
+                    # Si se está intentando desactivar el modo edición y hay un formulario abierto
+                    if st.session_state.new_point_coords is not None:
+                        # Cancelar directamente el formulario sin aviso
+                        st.session_state.edit_mode = False
+                        st.session_state.new_point_coords = None
+                        st.session_state.last_processed_click = None
+                        st.rerun()
+                    else:
+                        # Cambio normal de modo edición
+                        st.session_state.edit_mode = new_val
+                        st.rerun()
 
         # Sincronizar Clic
         if "last_map_click" in output and output["last_map_click"]:
@@ -180,6 +184,30 @@ def render_folium_map_section(dff):
                 st.session_state.last_processed_click = click_id
                 st.rerun() # Recarga instantánea para mostrar el formulario
 
+    
+    # 5.6. MINIMIZAR MAPA AUTOMÁTICAMENTE (si se activó edición)
+    if 'force_minimize_map' in st.session_state and st.session_state.force_minimize_map:
+        # JavaScript para salir del modo pantalla completa del mapa
+        st.markdown("""
+        <script>
+        // Salir del modo pantalla completa del mapa
+        setTimeout(function() {
+            // Buscar botón de fullscreen y hacer clic si está activo
+            var fullscreenBtn = document.querySelector('.leaflet-control-fullscreen-button');
+            if (fullscreenBtn && fullscreenBtn.classList.contains('leaflet-fullscreen-on')) {
+                fullscreenBtn.click();
+            }
+            // También intentar salir de fullscreen del documento
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            }
+        }, 100);
+        </script>
+        """, unsafe_allow_html=True)
+        
+        # Limpiar el estado después de ejecutar
+        st.session_state.force_minimize_map = False
+    
     # 6. FORMULARIO (siempre debajo del mapa)
     if st.session_state.new_point_coords and st.session_state.edit_mode:
         render_accident_form(st.session_state.new_point_coords)
@@ -189,6 +217,34 @@ def render_accident_form(clicked_coords):
     """
     Renderiza el formulario completo de accidente con todas las columnas originales.
     """
+    # Aviso nativo del navegador para prevenir salida accidental
+    st.markdown("""
+    <script>
+    // Prevenir salida accidental cuando hay formulario abierto
+    window.addEventListener('beforeunload', function(e) {
+        // Verificar si hay un formulario activo y si estamos en modo edición
+        var formElements = document.querySelectorAll('form[data-testid="stForm"]');
+        var editModeActive = false;
+        
+        // Verificar si el modo edición está activo (buscando coordenadas en el estado)
+        try {
+            var coordsText = document.body.textContent.includes('Coordenades:');
+            if (coordsText) {
+                editModeActive = true;
+            }
+        } catch(e) {
+            // Ignorar errores
+        }
+        
+        if (formElements.length > 0 && editModeActive) {
+            e.preventDefault();
+            e.returnValue = 'Desa el formulari o cancel·la\'l abans de sortir del mode edició.';
+            return e.returnValue;
+        }
+    });
+    </script>
+    """, unsafe_allow_html=True)
+    
     with st.form("accident_form"):
         st.subheader("📝 Detalls del nou accident")
         st.info(f"📍 Coordenades: {clicked_coords['lat']:.6f}, {clicked_coords['lng']:.6f}")
@@ -329,10 +385,10 @@ def render_accident_form(clicked_coords):
                     fotos=fotos
                 )
                 
-                # Limpiar estado y desactivar modo edición
+                # Limpiar estado del formulario pero mantener modo edición activo
                 st.session_state.new_point_coords = None
-                st.session_state.edit_mode = False
                 st.session_state.last_processed_click = None
+                # NOTA: No desactivar edit_mode para permitir crear más puntos
                 
                 st.success("✅ Accident guardat correctament!")
                 st.cache_data.clear()
@@ -342,13 +398,67 @@ def render_accident_form(clicked_coords):
                 st.error(f"❌ Error en desar a l'Excel: {str(e)}")
 
 
+def generate_unique_id(df):
+    """
+    Genera un ID únic per a un nou accident seguint la seqüència existent.
+    
+    Paràmetres:
+    -----------
+    df : pandas.DataFrame
+        DataFrame existent amb accidents
+        
+    Retorna:
+    --------
+    str
+        ID únic generat
+    """
+    if df.empty:
+        return f"ACC_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    # Buscar la columna de ID (puede ser 'id', 'ID', o 'Codi')
+    id_column = None
+    for col in ['id', 'ID', 'Codi']:
+        if col in df.columns:
+            id_column = col
+            break
+    
+    if id_column is None:
+        return f"ACC_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    # Buscar IDs numèrics existents
+    max_id = 0
+    for id_val in df[id_column]:
+        if isinstance(id_val, str):
+            # Buscar prefijos ACC_ o numéricos
+            if id_val.startswith('ACC_'):
+                try:
+                    num_part = id_val.replace('ACC_', '')
+                    if num_part.isdigit():
+                        num_id = int(num_part)
+                        if num_id > max_id:
+                            max_id = num_id
+                except:
+                    continue
+            elif id_val.isdigit():
+                try:
+                    num_id = int(id_val)
+                    if num_id > max_id:
+                        max_id = num_id
+                except:
+                    continue
+    
+    # Generar nou ID
+    new_id = max_id + 1
+    return f"ACC_{new_id}"
+
+
 def guardar_accident_excel(coords, id_accident="", codi="", temporada="", data="", lloc="", 
                           pais="", regio="", serralada="", orientacio="", altitud="", grup="",
                           desenc="", tipus_activitat="", origen="", progressio="", desencadenant="",
                           neu="", material="", arrossegats=0, ferits=0, morts=0, grau_perill="",
                           mida_allau="", observacions="", link="", fotos=""):
     """
-    Funció per guardar un nou accident a l'Excel amb tots els camps.
+    Funció per guardar un nou accident a l'Excel o Google Sheets amb tots els camps.
     Paràmetres:
     -----------
     coords : dict
@@ -356,20 +466,43 @@ def guardar_accident_excel(coords, id_accident="", codi="", temporada="", data="
     Los demás parámetros corresponden a todas las columnas del Excel
     """
     try:
-        # Leer el Excel existente
-        file_path = "data/bd_accidents_200726_net_c.xlsx"
+        # Detectar fuente de datos actual
+        data_source = st.session_state.get('data_source', 'none')
+        is_gsheets_editable = data_source == 'gsheets_editable'
         
-        # Crear backup de seguridad
-        import shutil
-        backup_path = f"data/backup_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}_bd_accidents.xlsx"
-        shutil.copy2(file_path, backup_path)
+        # Debug: mostrar fuente de datos
+        st.write(f"🔍 Fuente de datos detectada: {data_source}")
+        st.write(f"🔍 Es Google Sheets editable: {is_gsheets_editable}")
         
-        # Leer datos existentes
-        df_existing = pd.read_excel(file_path, engine="openpyxl")
+        # Obtener DataFrame actual según la fuente
+        if is_gsheets_editable:
+            # Obtener datos de Google Sheets usando conexión directa
+            try:
+                conn = st.connection("gsheets", type=GSheetsConnection)
+                with st.spinner("Carregant dades de Google Sheets..."):
+                    df_existing = conn.read()
+            except Exception as e:
+                st.error(f"❌ Error connectant a Google Sheets: {str(e)}")
+                return
+        else:
+            # Leer el Excel existente
+            file_path = "data/bd_accidents_200726_net_c.xlsx"
+            
+            # Crear backup de seguridad
+            import shutil
+            backup_path = f"data/backup_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}_bd_accidents.xlsx"
+            shutil.copy2(file_path, backup_path)
+            
+            # Leer datos existentes
+            df_existing = pd.read_excel(file_path, engine="openpyxl")
+        
+        # Generar ID único si no se proporciona
+        if not id_accident:
+            id_accident = generate_unique_id(df_existing)
         
         # Crear nueva fila con todos los campos
         new_row = {
-            'id': id_accident if id_accident else f"ACC_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}",
+            'id': id_accident,
             'Codi': codi if codi else "AUTO",
             'Temporada': temporada if temporada else "Desconegut",
             'Data': pd.to_datetime(data) if data else pd.Timestamp.now(),
@@ -403,25 +536,58 @@ def guardar_accident_excel(coords, id_accident="", codi="", temporada="", data="
         df_new = pd.DataFrame([new_row])
         df_final = pd.concat([df_existing, df_new], ignore_index=True)
         
-        # Guardar con engine openpyxl
-        with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
-            df_final.to_excel(writer, index=False, sheet_name='Accidents')
+        # Guardar según la fuente de datos
+        if is_gsheets_editable:
+            # Sincronizar con Google Sheets
+            with st.spinner("Desant dades al Google Sheets..."):
+                try:
+                    conn = st.connection("gsheets", type=GSheetsConnection)
+                    
+                    # Asegurar compatibilidad completa con PyArrow
+                    df_final = ensure_pyarrow_compatibility(df_final)
+                    
+                    # Verificar y forzar formato de columnas numéricas y de fecha
+                    df_final['Latitud'] = pd.to_numeric(df_final['Latitud'], errors='coerce')
+                    df_final['Longitud'] = pd.to_numeric(df_final['Longitud'], errors='coerce')
+                    df_final['Data'] = pd.to_datetime(df_final['Data'], errors='coerce', dayfirst=True)
+                    df_final['Morts'] = pd.to_numeric(df_final['Morts'], errors='coerce').fillna(0).astype(int)
+                    df_final['Ferits'] = pd.to_numeric(df_final['Ferits'], errors='coerce').fillna(0).astype(int)
+                    df_final['Arrossegats'] = pd.to_numeric(df_final['Arrossegats'], errors='coerce').fillna(0).astype(int)
+                    
+                    # Actualizar Google Sheets
+                    conn.update(worksheet="Accidents", data=df_final)
+                    st.cache_data.clear()
+                    st.success("✅ Dades desades correctament al núvol!")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error guardant a Google Sheets: {str(e)}")
+                    return
+        else:
+            # Guardar con engine openpyxl
+            with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
+                df_final.to_excel(writer, index=False, sheet_name='Accidents')
+            
+            st.success(f"✅ Accident guardat correctament! Backup creat a: {backup_path}")
         
-        st.success(f"✅ Accident guardat correctament! Backup creat a: {backup_path}")
+        # Limpiar caché
+        st.cache_data.clear()
         
     except FileNotFoundError:
         st.error("❌ No s'ha trobat el fitxer Excel. Assegura't que 'data/bd_accidents_200726_net_c.xlsx' existeix.")
     except PermissionError:
         st.error("❌ No es pot escriure al fitxer. Pot estar obert en un altre programa.")
     except Exception as e:
-        st.error(f"❌ Error en desar a l'Excel: {str(e)}")
-        # Intentar restaurar del backup si existe
-        try:
-            if 'backup_path' in locals():
-                shutil.copy2(backup_path, file_path)
-                st.info("🔄 S'ha restaurat el fitxer original des del backup.")
-        except:
-            pass 
+        if is_gsheets_editable:
+            st.error(f"❌ Error guardant a Google Sheets: {str(e)}")
+        else:
+            st.error(f"❌ Error en desar a l'Excel: {str(e)}")
+            # Intentar restaurar del backup si existe
+            try:
+                if 'backup_path' in locals():
+                    shutil.copy2(backup_path, file_path)
+                    st.info("🔄 S'ha restaurat el fitxer original des del backup.")
+            except:
+                pass 
 
 def render_map_section(dff):
     """

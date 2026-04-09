@@ -17,7 +17,7 @@ def create_folium_controls():
     dict
         Configuració simplificada del mapa
     """
-    st.markdown("### 🗺️ Configuració del Mapa Folium")
+    st.markdown("### 🗺️ Mapa d'Accidents per Allaus ACNA")
     
     # Control mínim - només mostrar punts
     show_points = st.checkbox("📍 Mostrar punts", value=True)

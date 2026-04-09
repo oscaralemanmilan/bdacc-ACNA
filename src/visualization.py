@@ -554,6 +554,26 @@ def render_kpi_boxes(kpi_data):
         """, unsafe_allow_html=True)
 
 
+def ensure_pyarrow_compatibility(df):
+    """
+    Asegura que el DataFrame sea compatible con PyArrow forzando tipos correctos.
+    Esta función previene errores de conversión de string a int64.
+    """
+    df_safe = df.copy()
+    
+    # Columnas que deben ser string para evitar errores de PyArrow
+    string_columns = ['id', 'Codi', 'Temporada', 'Lloc', 'Tipus activitat', 'Pais', 
+                     'Regio', 'Serralada', 'Orientacio', 'Altitud', 'Grup', 'Desenc',
+                     'Grau de perill', 'Mida allau', 'Origen', 'Progressio', 
+                     'Desencadenant', 'Neu', 'Material', 'Observacions', 'Link', 'Fotos']
+    
+    for col in string_columns:
+        if col in df_safe.columns:
+            df_safe[col] = df_safe[col].astype(str)
+    
+    return df_safe
+
+
 def create_data_table(dff, original_file_path=None):
     """
     Crea la taula de dades amb funcionalitat completa d'edició i guardat.
@@ -563,14 +583,15 @@ def create_data_table(dff, original_file_path=None):
         return
 
     # 1. Gestión de estado para persistencia
-    # Siempre actualizar df_actualizado con los datos filtrados actuales
-    st.session_state.df_actualizado = dff.copy()
+    # Asegurar compatibilidad completa con PyArrow
+    dff_safe = ensure_pyarrow_compatibility(dff)
+    st.session_state.df_actualizado = dff_safe.copy()
     if 'editing_table' not in st.session_state:
         st.session_state.editing_table = False
     if 'mensaje_guardado' not in st.session_state:
         st.session_state.mensaje_guardado = ""
 
-    # 2. Detectar origen de datos
+    # 2. Detectar origen de dades
     data_source = st.session_state.get('data_source', 'none')
     is_gsheets_editable = data_source == 'gsheets_editable'
     is_local_source = data_source in ['local', 'local_custom']
@@ -657,18 +678,29 @@ def create_data_table(dff, original_file_path=None):
                 
                 # Persistencia a Google Sheets si es editable
                 if is_gsheets_editable:
-                    try:
-                        conn = st.session_state.get('gsheets_conn')
-                        if conn:
-                            conn.update(st.session_state.df_actualizado)
-                            st.cache_data.clear()
-                            st.toast("✅ Cambios guardados a Google Sheets!")
-                        else:
-                            st.error("❌ Error: No hay conexión con Google Sheets")
-                    except Exception as e:
-                        st.error(f"❌ Error guardando en Google Sheets: {e}")
+                    with st.spinner("Desant dades al Google Sheets..."):
+                        try:
+                            conn = st.session_state.get('gsheets_conn')
+                            if conn:
+                                # Asegurar compatibilidad completa con PyArrow
+                                df_to_save = ensure_pyarrow_compatibility(st.session_state.df_actualizado)
+                                
+                                # Verificar formato de columnas numéricas y de fecha
+                                df_to_save['Latitud'] = pd.to_numeric(df_to_save['Latitud'], errors='coerce')
+                                df_to_save['Longitud'] = pd.to_numeric(df_to_save['Longitud'], errors='coerce')
+                                df_to_save['Data'] = pd.to_datetime(df_to_save['Data'], errors='coerce')
+                                
+                                # Actualizar Google Sheets
+                                conn.update(df_to_save)
+                                st.cache_data.clear()
+                                st.success("✅ Dades desades correctament al núvol!")
+                            else:
+                                st.error("❌ Error: No hi ha connexió amb Google Sheets")
+                        except Exception as e:
+                            st.error(f"❌ Error desant a Google Sheets: {e}")
                 else:
-                    st.toast("✅ Cambios guardados localmente")
+                    st.warning("⚠️ L'edició de fitxers locals no es desa permanentment. Per desar canvis, utilitza la base de dades Google Sheets.")
+                    st.toast("✅ Canvis guardats localment")
                 
                 st.rerun()
                     
@@ -679,16 +711,29 @@ def create_data_table(dff, original_file_path=None):
                 
                 # Persistencia a Google Sheets si es editable
                 if is_gsheets_editable:
-                    try:
-                        conn = st.session_state.get('gsheets_conn')
-                        if conn:
-                            conn.update(st.session_state.df_actualizado)
-                            st.cache_data.clear()
-                            st.toast("✅ Cambios guardados a Google Sheets!")
-                        else:
-                            st.error("❌ Error: No hay conexión con Google Sheets")
-                    except Exception as e:
-                        st.error(f"❌ Error guardando en Google Sheets: {e}")
+                    with st.spinner("Desant dades al Google Sheets..."):
+                        try:
+                            conn = st.session_state.get('gsheets_conn')
+                            if conn:
+                                # Asegurar compatibilidad completa con PyArrow
+                                df_to_save = ensure_pyarrow_compatibility(st.session_state.df_actualizado)
+                                
+                                # Verificar formato de columnas numéricas y de fecha
+                                df_to_save['Latitud'] = pd.to_numeric(df_to_save['Latitud'], errors='coerce')
+                                df_to_save['Longitud'] = pd.to_numeric(df_to_save['Longitud'], errors='coerce')
+                                df_to_save['Data'] = pd.to_datetime(df_to_save['Data'], errors='coerce')
+                                
+                                # Actualizar Google Sheets
+                                conn.update(df_to_save)
+                                st.cache_data.clear()
+                                st.success("✅ Dades desades correctament al núvol!")
+                            else:
+                                st.error("❌ Error: No hi ha connexió amb Google Sheets")
+                        except Exception as e:
+                            st.error(f"❌ Error desant a Google Sheets: {e}")
+                else:
+                    st.warning("⚠️ L'edició de fitxers locals no es desa permanentment. Per desar canvis, utilitza la base de dades Google Sheets.")
+                    st.toast("✅ Canvis guardats localment")
                 
                 st.session_state.editing_table = False
                 st.rerun()
@@ -699,15 +744,8 @@ def create_data_table(dff, original_file_path=None):
                 st.rerun()
     config_cols = {"Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY")}
     
-    # Asegurar que columnas categóricas se mantengan como string para Arrow
-    df_display = st.session_state.df_actualizado.copy()
-    categorical_cols = ["Grau de perill", "Mida allau", "Origen", "Desencadenant", 
-                     "Tipus activitat", "Pais", "Regio", "Serralada", "Orientacio", 
-                     "Progressio", "Material"]
-    
-    for col in categorical_cols:
-        if col in df_display.columns:
-            df_display[col] = df_display[col].astype(str)
+    # Asegurar compatibilidad completa con PyArrow para display
+    df_display = ensure_pyarrow_compatibility(st.session_state.df_actualizado)
     
     if st.session_state.editing_table:
         st.info("Pots editar directament les cel·les de la taula.")
@@ -737,7 +775,7 @@ def export_to_excel(df):
         DataFrame a exportar
     """
     if df.empty:
-        st.warning("⚠️ No hay datos para exportar")
+        st.warning("⚠️ No hi ha dades per exportar")
         return
     
     try:
@@ -755,7 +793,7 @@ def export_to_excel(df):
             file_name=f'accidents_filtrats_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
             mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        st.success("✅ Datos preparados para exportación")
+        st.success("✅  preparados para exportación")
         
     except Exception as e:
         st.error(f"❌ Error al exportar a Excel: {e}")
