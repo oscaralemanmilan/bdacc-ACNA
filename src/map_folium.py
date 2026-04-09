@@ -12,7 +12,7 @@ from config.settings import MAP_CONFIG
 from branca.element import Template, MacroElement
 
 
-def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new_point=None):
+def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new_point=None, selected_map="Fosc"):
     """
     Crea un mapa interactiu amb Folium i múltiples capes base.
     
@@ -28,6 +28,8 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
         Si el mode d'edició està actiu (per mostrar cursor crosshair)
     new_point : dict
         Coordenades del nou punt per mostrar marcador de borrador
+    selected_map : str
+        Mapa seleccionado per defecte ("Fosc", "Clar", "Standard", "Topogràfic", "Satèl·lit")
     
     Retorna:
     --------
@@ -38,7 +40,7 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
     # Centre i zoom per defecte (sempre iguals)
     center = MAP_CONFIG['default_center']
     
-    # Crear mapa base fosc per defecte
+    # Crear mapa base sin tiles por defecto
     m = folium.Map(
         location=[center["lat"], center["lon"]], 
         zoom_start=5.5,  # Zoom original
@@ -47,51 +49,62 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
         control_zoom=True
     )
     
-    # Afegir capes en ordre invers (Folium posa per defecte l'última capa)
-    # Satèl·lit primer (quedarà a baix)
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Tiles &copy; Esri | OpenStreetMap contributors',
-        name='Satèl·lit',
-        overlay=False,
-        control=True
-    ).add_to(m)
+    # Definir configuración de capas según el mapa seleccionado
+    capes_config = {
+        "Satèl·lit": {
+            "tiles": 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            "attr": 'Tiles &copy; Esri | OpenStreetMap contributors',
+            "default": False
+        },
+        "Topogràfic": {
+            "tiles": 'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+            "attr": 'OpenTopoMap | OpenStreetMap contributors',
+            "default": False
+        },
+        "Standard": {
+            "tiles": 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            "attr": 'OpenStreetMap contributors',
+            "default": False
+        },
+        "Clar": {
+            "tiles": 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+            "attr": 'CARTO | OpenStreetMap contributors',
+            "default": False
+        },
+        "Fosc": {
+            "tiles": 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+            "attr": 'CARTO | OpenStreetMap contributors',
+            "default": True  # Por defecto
+        }
+    }
     
+    # Afegim les capes en ordre. La ÚLTIMA que s'afegeix és la que queda activa.
+    # Primer les que NO volem per defecte
+    altres_capes = ["Satèl·lit", "Topogràfic", "Standard", "Clar"]
+    for nom in altres_capes:
+        config = capes_config[nom]
+        folium.TileLayer(
+            tiles=config["tiles"],
+            attr=config["attr"],
+            name=nom,
+            overlay=False,
+            control=True,
+            show=False  # Això fa que estiguin al selector però no es carreguin d'inici
+        ).add_to(m)
+
+    # Finalment afegim la capa per defecte (Fosc)
+    config_fosc = capes_config["Fosc"]
     folium.TileLayer(
-        tiles='https://tile.opentopomap.org/{z}/{x}/{y}.png',
-        attr='OpenTopoMap | OpenStreetMap contributors',
-        name='Topogràfic',
+        tiles=config_fosc["tiles"],
+        attr=config_fosc["attr"],
+        name="Fosc",
         overlay=False,
-        control=True
+        control=True,
+        show=True  # Aquesta és la que es veurà només obrir
     ).add_to(m)
-    
-    folium.TileLayer(
-        tiles='https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        attr='OpenStreetMap contributors',
-        name='Standard',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    folium.TileLayer(
-        tiles='https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        attr='CARTO | OpenStreetMap contributors',
-        name='Clar',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    # Fosc últim (quedarà seleccionat per defecte)
-    folium.TileLayer(
-        tiles='https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attr='CARTO | OpenStreetMap contributors',
-        name='Fosc',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    # Afegir control de capes (selecció única)
-    folium.LayerControl().add_to(m)
+
+    # Ara el LayerControl sí que trobarà capes per mostrar
+    folium.LayerControl(position='topright', collapsed=True).add_to(m)
     
     # Determinar estado inicial del botón
     initial_active = "true" if edit_mode else "false"
@@ -214,47 +227,48 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
         """)
         m.get_root().add_child(font_awesome_css)
         
-        # CSS per reduir la font dels crèdits, selector de capes i escala del mapa - sempre carregat
-        credits_css = folium.Element("""
-        <style>
-        .leaflet-control-attribution {
-            font-size: 10px !important;
-            background-color: rgba(255, 255, 255, 0.7) !important;
-            padding: 1px 3px !important;
-            line-height: 10px !important;
-            height: auto !important;
-        }
-        .leaflet-control-attribution a {
-            font-size: 10px !important;
-            line-height: 10px !important;
-        }
-        .leaflet-control-attribution span {
-            font-size: 10px !important;
-            line-height: 10px !important;
-        }
-        .leaflet-control-attribution-prefix {
-            display: none !important;
-        }
-        /* Reduir font del selector de capes */
-        .leaflet-control-layers {
-            font-size: 12px !important;
-        }
-        .leaflet-control-layers label {
-            font-size: 12px !important;
-            line-height: 12px !important;
-        }
-        .leaflet-control-layers input {
-            transform: scale(0.8);
-            margin-right: 3px;
-        }
-        /* Reduir font de l'escala */
-        .leaflet-control-scale {
-            font-size: 10px !important;
-            line-height: 12px !important;
-        }
-        </style>
-        """)
-        m.get_root().header.add_child(credits_css)
+        # CSS per reduir la font dels crèdits, selector de capes i escala del mapa - només si hi ha dades
+        if len(dff) > 0:
+            credits_css = folium.Element("""
+            <style>
+            .leaflet-control-attribution {
+                font-size: 10px !important;
+                background-color: rgba(255,255,255,0.7) !important;
+                padding: 1px 3px !important;
+                line-height: 10px !important;
+                height: auto !important;
+            }
+            .leaflet-control-attribution a {
+                font-size: 10px !important;
+                line-height: 10px !important;
+            }
+            .leaflet-control-attribution span {
+                font-size: 10px !important;
+                line-height: 10px !important;
+            }
+            .leaflet-control-attribution-prefix {
+                display: none !important;
+            }
+            /* Reduir font del selector de capes */
+            .leaflet-control-layers {
+                font-size: 12px !important;
+            }
+            .leaflet-control-layers label {
+                font-size: 12px !important;
+                line-height: 12px !important;
+            }
+            .leaflet-control-layers input {
+                transform: scale(0.8);
+                margin-right: 3px;
+            }
+            /* Reduir font de l'escala */
+            .leaflet-control-scale {
+                font-size: 10px !important;
+                line-height: 12px !important;
+            }
+            </style>
+            """)
+            m.get_root().header.add_child(credits_css)
     
     # Afegir Fullscreen (a l'esquerra)
     from folium.plugins import Fullscreen
@@ -358,134 +372,103 @@ def _add_points_layer(m, dff):
         Dades dels accidents
     """
     
-    if len(dff) > 0:
-        for index, row in dff.iterrows():
-            # Verificar que las coordenadas no sean NaN
-            lat = pd.to_numeric(row.get('Latitud'), errors='coerce')
-            lon = pd.to_numeric(row.get('Longitud'), errors='coerce')
-            
-            # Saltar si las coordenadas no son válidas
-            if pd.isna(lat) or pd.isna(lon):
-                continue
-            
-            # Color segons víctimes (no segons grau de perill)
-            morts_value = pd.to_numeric(row.get('Morts', 0), errors='coerce')
-            ferits_value = pd.to_numeric(row.get('Ferits', 0), errors='coerce')
-            arrossegats_value = pd.to_numeric(row.get('Arrossegats', 0), errors='coerce')
-            
-            morts = 0 if pd.isna(morts_value) else int(morts_value)
-            ferits = 0 if pd.isna(ferits_value) else int(ferits_value)
-            arrossegats = 0 if pd.isna(arrossegats_value) else int(arrossegats_value)
-            
-            if morts > 0:
-                color = '#FF0000'  # Rojo si hay al menos un muerto
-            elif ferits > 0:
-                color = '#FFA500'  # Naranja si hay heridos pero no muertos
-            else:
-                color = '#FFFF00'  # Amarillo si no hay muertos ni heridos
-            
-            # Mida fixa per a tots els punts
-            radius = 5
-            
-            # Tooltip simple i directe amb tota la informació (estils personalitzats)
-            tooltip_text = f"""
+    if len(dff) <= 0:
+        return
 
-            <style>
-
-            .leaflet-popup-content-wrapper {{
-
-                background: rgba(0, 0, 0, 0.6) !important; /* Fons fosc amb transparència */
-
-                border: 5px solid #9bd7cf !important;
-
-                border-radius:4px !important;
-
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
-
-                padding: 0 !important;
-
-            }}
-
-            .leaflet-popup-content {{
-
-                margin: 0 !important;
-
-                padding: 0 !important;
-
-                background: transparent !important;
-
-            }}
-
-            .leaflet-popup-tip {{
-
-                background: #9bd7cf !important;
-
-                border-top: 2px solid #263042 !important;
-
-                border-right: 2px solid #263042 !important;
-
-            }}
-
-            </style>
-
-            <div style="background: rgba(0, 0, 0, 0.6); /* Fons fosc amb transparència */
-
-            border: 2px solid #263042;
-
-            border-radius: 2px;
-
+    # 1. Injectem el CSS UNA SOLA VEGADA al header del mapa (fora del bucle)
+    style_html = """
+    <style>
+        .leaflet-popup-content-wrapper {
+            background: rgba(0, 0, 0, 0.7) !important;
+            border: 3px solid #9bd7cf !important;
+            border-radius: 4px !important;
+            padding: 0 !important;
+        }
+        .leaflet-popup-content { 
+            margin: 0 !important; 
+            padding: 0 !important; 
+        }
+        .leaflet-popup-tip { 
+            background: #9bd7cf !important; 
+        }
+        .popup-container {
             padding: 10px;
-
-            margin: 0;
-
             font-family: system-ui, -apple-system, sans-serif;
-
             font-size: 13px;
+            color: #ffffff;
+        }
+        .popup-title {
+            font-weight: 600; 
+            color: #9bd7cf; 
+            margin-bottom: 4px; 
+            font-size: 16px;
+        }
+        .popup-grid {
+            display: grid; 
+            gap: 2px; 
+            margin-bottom: 0;
+        }
+        .popup-label {
+            color: #9ca3af;
+        }
+        .popup-value {
+            color: #ffffff;
+        }
+    </style>
+    """
+    m.get_root().header.add_child(folium.Element(style_html))
 
-            color: #ffffff;">
-
-                <div style="font-weight: 600; color: #9bd7cf; margin-bottom: 4px; font-size: 16px;">
-
-                    {row.get('Lloc', 'Desconegut')}
-
-                </div>
-
-                <div style="display: grid; gap: 2px; margin-bottom: 0;">
-
-                    <div><span style="color: #9ca3af;">Data:</span> <span style="color: #ffffff;">{row.get('Data_str', 'Desconeguda')}</span></div>
-
-                    <div><span style="color: #9ca3af;">Perill:</span> <span style="color: #ffffff;">{row.get('Grau de perill', '1')}</span></div>
-
-                    <div><span style="color: #9ca3af;">Desencadenant:</span> <span style="color: #ffffff;">{row.get('Desencadenant', 'Desconegut')}</span></div>
-
-                    <div><span style="color: #9ca3af;">Origen:</span> <span style="color: #ffffff;">{row.get('Origen', 'Desconegut')}</span></div>
-
-                    <div><span style="color: #9ca3af;">Mida allau:</span> <span style="color: #ffffff;">{row.get('Mida allau', 'Desconegut')}</span></div>
-
-                    <div><span style="color: #9ca3af;">Activitat:</span> <span style="color: #ffffff;">{row.get('Tipus activitat', 'Desconegut')}</span></div>
-
-                    <div><span style="color: #9ca3af;">Morts:</span> <span style="color: #ffffff;">{morts}</span></div>
-
-                    <div><span style="color: #9ca3af;">Ferits:</span> <span style="color: #ffffff;">{ferits}</span></div>
-
-                    <div><span style="color: #9ca3af;">Arrossegats:</span> <span style="color: #ffffff;">{arrossegats}</span></div>
-
-                </div>
-
+    # 2. Iterar sobre els punts amb HTML net i sense estils inline
+    for index, row in dff.iterrows():
+        # Verificar que las coordenadas no sean NaN
+        lat = pd.to_numeric(row.get('Latitud'), errors='coerce')
+        lon = pd.to_numeric(row.get('Longitud'), errors='coerce')
+        
+        # Saltar si las coordenadas no son válidas
+        if pd.isna(lat) or pd.isna(lon):
+            continue
+        
+        # Lògica de colors (simplificada per llegibilitat)
+        morts = int(pd.to_numeric(row.get('Morts', 0), errors='coerce') or 0)
+        ferits = int(pd.to_numeric(row.get('Ferits', 0), errors='coerce') or 0)
+        arrossegats = int(pd.to_numeric(row.get('Arrossegats', 0), errors='coerce') or 0)
+        
+        if morts > 0:
+            color = '#FF0000'  # Rojo si hay al menos un muerto
+        elif ferits > 0:
+            color = '#FFA500'  # Naranja si hay heridos pero no muertos
+        else:
+            color = '#FFFF00'  # Amarillo si no hay muertos ni heridos
+        
+        # 3. El HTML ara és net, sense <style> repetits
+        popup_html = f"""
+        <div class="popup-container">
+            <div class="popup-title">{row.get('Lloc', 'Desconegut')}</div>
+            <div class="popup-grid">
+                <div><span class="popup-label">Data:</span> <span class="popup-value">{row.get('Data_str', 'Desconeguda')}</span></div>
+                <div><span class="popup-label">Perill:</span> <span class="popup-value">{row.get('Grau de perill', '1')}</span></div>
+                <div><span class="popup-label">Desencadenant:</span> <span class="popup-value">{row.get('Desencadenant', 'Desconegut')}</span></div>
+                <div><span class="popup-label">Origen:</span> <span class="popup-value">{row.get('Origen', 'Desconegut')}</span></div>
+                <div><span class="popup-label">Mida allau:</span> <span class="popup-value">{row.get('Mida allau', 'Desconegut')}</span></div>
+                <div><span class="popup-label">Activitat:</span> <span class="popup-value">{row.get('Tipus activitat', 'Desconegut')}</span></div>
+                <div><span class="popup-label">Morts:</span> <span class="popup-value">{morts}</span></div>
+                <div><span class="popup-label">Ferits:</span> <span class="popup-value">{ferits}</span></div>
+                <div><span class="popup-label">Arrossegats:</span> <span class="popup-value">{arrossegats}</span></div>
             </div>
-            """
-            
-            # Crear marcador
-            folium.CircleMarker(
-                location=[lat, lon],
-                radius=radius,
-                popup=folium.Popup(tooltip_text, max_width=300),
-                color=color,
-                fill=True,
-                fillColor=color,
-                fillOpacity=0.7,
-                tooltip=f"{row.get('Lloc', 'Desconegut')}"
-            ).add_to(m)
+        </div>
+        """
+        
+        # Crear marcador
+        folium.CircleMarker(
+            location=[lat, lon],
+            radius=5,
+            popup=folium.Popup(popup_html, max_width=300),
+            color=color,
+            fill=True,
+            fillColor=color,
+            fillOpacity=0.7,
+            tooltip=row.get('Lloc', 'Info')
+        ).add_to(m)
 
 
 def _fit_bounds(m, dff):

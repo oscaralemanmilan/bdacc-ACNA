@@ -64,8 +64,9 @@ MAP_CONFIG = {
     "available_styles": {
         "Fosc": "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         "Clar": "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-        "Voyager": "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
-        "Topogràfic": "stamen_terrain"  # Especial per TileLayer
+        "Standard": "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+        "Topogràfic": "stamen_terrain",  # Especial per TileLayer
+        "Satèl·lit": "satelite"  # Especial per TileLayer
     },
     
     # URLs per TileLayer (mapes que necessiten capes addicionals)
