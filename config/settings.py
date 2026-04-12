@@ -22,8 +22,8 @@ DEFAULT_DATA_FILE = "data/bd_accidents_200726_net_c.xlsx"  # Pot tenir problemes
 # --------------------------------------------------------
 COLORS = {
     # Colors principals
-    "turquoise": "#40E0D0",
-    "turquoise_rgb": (64, 224, 208),  # RGB per pydeck
+    "turquoise": "#02bfad",
+    "turquoise_rgb": (2, 191, 173),  # RGB
     
     # Colors de fons
     "dark_bg": "#0e1117",
@@ -47,9 +47,9 @@ COLORS = {
     "success_bg": "#ddffdd",
     "success_text": "#1f7a1f",
     "success_border": "#80ff80",
-    "info_bg": "#e7f4ff",
+    "info_bg": "#46acd2",
     "info_text": "#155a8a",
-    "info_border": "#8ec8ff"
+    "info_border": "#46acd2"
 }
 
 # --------------------------------------------------------
@@ -110,17 +110,18 @@ DATA_CONFIG = {
     "required_columns": ["Data", "Latitud", "Longitud"],
     
     # Columnes numèriques
-    "numeric_columns": ["Morts", "Ferits", "Arrossegats"],
+    "numeric_columns": ["id", "Codi", "Grup", "Desenc", 
+        "Morts", "Ferits", "Arrossegats"],
     
     # Columnes categòriques
     "categorical_columns": [
-        "Temporada","Tipus activitat","Pais","Regio","Serralada","Orientacio",
-        "Origen","Progressio","Desencadenant","Material","Altitud",
-        "Grau de perill","Mes","Mida allau"
+        "Temporada", "Tipus activitat", "Pais", "Regio", "Serralada", "Orientacio",
+        "Origen", "Progressio", "Desencadenant", "Material", "Altitud",
+        "Grau de perill", "Mes", "Mida allau"
     ],
     
     # Valors per defecte per a dades buides
-    "unknown_value": "Desconegut",
+    "default_nan": None,
     
     # Límits geogràfics (Península Ibèrica)
     "geo_bounds": {

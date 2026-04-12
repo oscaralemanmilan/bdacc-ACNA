@@ -97,6 +97,9 @@ def process_data(df):
     # 5. Columnes auxiliars (solo las necesarias)
     df["Any"] = df["Data"].dt.year
     df["Mes"] = df["Data"].dt.month.map(MESOS_CAT)
+    # Crear Data_str con manejo de NaT para evitar errores
+    df["Data_str"] = df["Data"].dt.strftime("%d/%m/%Y")
+    df.loc[df["Data"].isna(), "Data_str"] = "Desconeguda"  # Manejar fechas NaT
     df["Accidents"] = 1  # Cada fila és un accident
     
     # Eliminar filas con fechas NaT para evitar problemas

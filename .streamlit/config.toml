@@ -1,0 +1,37 @@
+[theme]
+# --- COLORS PRINCIPALS ---
+# Color per a botons (primary), sliders i elements actius (el teu turquesa)
+#primaryColor = "#46acd2"
+
+# Color de fons de l'àrea principal
+#backgroundColor = "#ffffff"
+
+# Color de fons de la barra lateral i targetes (el teu sidebar_dark)
+#secondaryBackgroundColor = "#f5f5f5"
+
+# Color del text principal
+#textColor = "#000000"
+
+# --- FONT ---
+# Opcions: "sans serif", "serif" o "monospace"
+#font = "sans serif"
+
+[client]
+# Mostra o oculta el menú superior dret (tres ratlles) i el peu de pàgina "Made with Streamlit"
+#showErrorDetails = true
+#toolbarMode = "auto"
+
+[browser]
+# Configura si vols que s'obri el navegador automàticament al llançar l'app
+gatherUsageStats = false
+
+[server]
+# Configuració del servidor (útil per a desplegaments)
+#headless = true
+#port = 8501
+#enableCORS = false
+#enableXsrfProtection = false
+
+[ui]
+# Amaga el botó de "Deploy" a la part superior si no el necessites
+#hideTopBar = false

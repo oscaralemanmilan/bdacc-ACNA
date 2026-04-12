@@ -108,7 +108,7 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
     
     # Determinar estado inicial del botón
     initial_active = "true" if edit_mode else "false"
-    initial_bg = "#9bd7cf" if edit_mode else "white"
+    initial_bg = "#02bfad" if edit_mode else "white"
     initial_color = "white" if edit_mode else "#333"
     initial_cursor = "crosshair" if edit_mode else "grab" # 'grab' es mejor que 'default' en mapas
     
@@ -139,7 +139,7 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
                 editMode = !editMode;
                 
                 // Actualizar UI
-                this.querySelector('a').style.backgroundColor = editMode ? "#9bd7cf" : "white";
+                this.querySelector('a').style.backgroundColor = editMode ? "#02bfad" : "white";
                 document.getElementById("edit-icon").style.color = editMode ? "white" : "#333";
                 map.getContainer().style.cursor = editMode ? 'crosshair' : 'grab';
                 
@@ -363,19 +363,12 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
 def _add_points_layer(m, dff):
     """
     Afegeix una capa de punts amb colors segons el grau de perill.
-    
-    Paràmetres:
-    -----------
-    m : folium.Map
-        Mapa de Folium
-    dff : pandas.DataFrame
-        Dades dels accidents
     """
     
     if len(dff) <= 0:
         return
 
-    # 1. Injectem el CSS UNA SOLA VEGADA al header del mapa (fora del bucle)
+    # 1. Injectem el CSS al header (estils del popup)
     style_html = """
     <style>
         .leaflet-popup-content-wrapper {
@@ -384,13 +377,8 @@ def _add_points_layer(m, dff):
             border-radius: 4px !important;
             padding: 0 !important;
         }
-        .leaflet-popup-content { 
-            margin: 0 !important; 
-            padding: 0 !important; 
-        }
-        .leaflet-popup-tip { 
-            background: #9bd7cf !important; 
-        }
+        .leaflet-popup-content { margin: 0 !important; padding: 0 !important; }
+        .leaflet-popup-tip { background: #9bd7cf !important; }
         .popup-container {
             padding: 10px;
             font-family: system-ui, -apple-system, sans-serif;
@@ -403,54 +391,84 @@ def _add_points_layer(m, dff):
             margin-bottom: 4px; 
             font-size: 16px;
         }
-        .popup-grid {
-            display: grid; 
-            gap: 2px; 
-            margin-bottom: 0;
-        }
-        .popup-label {
-            color: #9ca3af;
-        }
-        .popup-value {
-            color: #ffffff;
-        }
+        .popup-grid { display: grid; gap: 2px; }
+        .popup-label { color: #9ca3af; }
+        .popup-value { color: #ffffff; }
+
+        /* Estil per al Tooltip (el que surt al passar el cursor) */
+        .leaflet-tooltip {
+            font-size: 14px !important;
+            font-weight: 500;
+            color: #9bd7cf;
+            background-color: rgba(0, 0, 0, 0.95) !important;
+            border: 3px solid #9bd7cf !important;
+            border-radius: 4px !important;
+
     </style>
     """
     m.get_root().header.add_child(folium.Element(style_html))
 
-    # 2. Iterar sobre els punts amb HTML net i sense estils inline
+    # 2. Iterar sobre els punts
     for index, row in dff.iterrows():
-        # Verificar que las coordenadas no sean NaN
         lat = pd.to_numeric(row.get('Latitud'), errors='coerce')
         lon = pd.to_numeric(row.get('Longitud'), errors='coerce')
         
-        # Saltar si las coordenadas no son válidas
         if pd.isna(lat) or pd.isna(lon):
             continue
         
-        # Lògica de colors (simplificada per llegibilitat)
-        morts = int(pd.to_numeric(row.get('Morts', 0), errors='coerce') or 0)
-        ferits = int(pd.to_numeric(row.get('Ferits', 0), errors='coerce') or 0)
-        arrossegats = int(pd.to_numeric(row.get('Arrossegats', 0), errors='coerce') or 0)
-        
-        if morts > 0:
-            color = '#FF0000'  # Rojo si hay al menos un muerto
-        elif ferits > 0:
-            color = '#FFA500'  # Naranja si hay heridos pero no muertos
+        # --- TRACTAMENT DE DADES BUIDES SEGONS EL TEU CRITERI ---
+        def get_clean_val(key, default=""):
+            val = row.get(key)
+            # Si és nul, NaN o la cadena "nan" (comú en pandas), retornem buit
+            if pd.isna(val) or str(val).lower() == 'nan' or val is None:
+                return default
+            return str(val).strip()
+
+        # Data formatada o buida
+        data_valor = row.get('Data')
+        if pd.notnull(data_valor) and hasattr(data_valor, 'strftime'):
+            data_display = data_valor.strftime('%d/%m/%Y')
         else:
-            color = '#FFFF00'  # Amarillo si no hay muertos ni heridos
+            data_display = ""
+
+        # Altres valors categòrics
+        perill = get_clean_val('Grau de perill')
+        desenc = get_clean_val('Desencadenant')
+        origen = get_clean_val('Origen')
+        mida = get_clean_val('Mida allau')
+        activitat = get_clean_val('Tipus activitat')
+
+        # Valors numèrics (mantenim el 0 si és 0, o buit si és nul)
+        def get_num_val(key):
+            val = pd.to_numeric(row.get(key), errors='coerce')
+            return int(val) if pd.notnull(val) else ""
+
+        morts = get_num_val('Morts')
+        ferits = get_num_val('Ferits')
+        arrossegats = get_num_val('Arrossegats')
+
+        # Lògica de colors per al punt (basada en dades numèriques)
+        morts_count = int(morts) if morts != "" else 0
+        ferits_count = int(ferits) if ferits != "" else 0
         
-        # 3. El HTML ara és net, sense <style> repetits
+        if morts_count > 0:
+            color = '#FF0000'
+        elif ferits_count > 0:
+            color = '#FFA500'
+        else:
+            color = '#FFFF00'
+        
+        # 3. HTML del Popup
         popup_html = f"""
         <div class="popup-container">
-            <div class="popup-title">{row.get('Lloc', 'Desconegut')}</div>
+            <div class="popup-title">{get_clean_val('Lloc', 'Accident')}</div>
             <div class="popup-grid">
-                <div><span class="popup-label">Data:</span> <span class="popup-value">{row.get('Data_str', 'Desconeguda')}</span></div>
-                <div><span class="popup-label">Perill:</span> <span class="popup-value">{row.get('Grau de perill', '1')}</span></div>
-                <div><span class="popup-label">Desencadenant:</span> <span class="popup-value">{row.get('Desencadenant', 'Desconegut')}</span></div>
-                <div><span class="popup-label">Origen:</span> <span class="popup-value">{row.get('Origen', 'Desconegut')}</span></div>
-                <div><span class="popup-label">Mida allau:</span> <span class="popup-value">{row.get('Mida allau', 'Desconegut')}</span></div>
-                <div><span class="popup-label">Activitat:</span> <span class="popup-value">{row.get('Tipus activitat', 'Desconegut')}</span></div>
+                <div><span class="popup-label">Data:</span> <span class="popup-value">{data_display}</span></div>
+                <div><span class="popup-label">Perill:</span> <span class="popup-value">{perill}</span></div>
+                <div><span class="popup-label">Desencadenant:</span> <span class="popup-value">{desenc}</span></div>
+                <div><span class="popup-label">Origen:</span> <span class="popup-value">{origen}</span></div>
+                <div><span class="popup-label">Mida allau:</span> <span class="popup-value">{mida}</span></div>
+                <div><span class="popup-label">Activitat:</span> <span class="popup-value">{activitat}</span></div>
                 <div><span class="popup-label">Morts:</span> <span class="popup-value">{morts}</span></div>
                 <div><span class="popup-label">Ferits:</span> <span class="popup-value">{ferits}</span></div>
                 <div><span class="popup-label">Arrossegats:</span> <span class="popup-value">{arrossegats}</span></div>
@@ -458,7 +476,6 @@ def _add_points_layer(m, dff):
         </div>
         """
         
-        # Crear marcador
         folium.CircleMarker(
             location=[lat, lon],
             radius=5,
@@ -467,7 +484,7 @@ def _add_points_layer(m, dff):
             fill=True,
             fillColor=color,
             fillOpacity=0.7,
-            tooltip=row.get('Lloc', 'Info')
+            tooltip=f"{get_clean_val('Lloc', 'Accident')} | {data_display}" # 'Accident' es mostra si no hi ha nom
         ).add_to(m)
 
 

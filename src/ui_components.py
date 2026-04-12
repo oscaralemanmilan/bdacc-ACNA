@@ -154,9 +154,12 @@ def create_data_source_sidebar():
         try:
             # Conexión a Google Sheets usando el spreadsheet del secrets.toml
             conn = st.connection("gsheets", type=GSheetsConnection)
-            worksheet = conn.read()  # Usará el spreadsheet configurado en secrets.toml
+            worksheet = conn.read(ttl=0)  # Usará el spreadsheet configurado en secrets.toml
             
             if worksheet is not None and not worksheet.empty:
+                # Això elimina files que no tenen absolutament cap dada (comunes a GSheets)
+                worksheet = worksheet.dropna(how='all')
+
                 # Convertir columna 'Data' a datetime
                 if 'Data' in worksheet.columns:
                     worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce', dayfirst=True)
@@ -204,9 +207,12 @@ def create_data_source_sidebar():
             
             # Conexión a Google Sheets en modo lectura
             conn = st.connection("gsheets", type=GSheetsConnection)
-            worksheet = conn.read(spreadsheet=spreadsheet_id)
+            worksheet = conn.read(spreadsheet=spreadsheet_id, ttl=0)
             
             if worksheet is not None and not worksheet.empty:
+                # Això elimina files que no tenen absolutament cap dada (comunes a GSheets)
+                worksheet = worksheet.dropna(how='all')
+                
                 # Convertir columna 'Data' a datetime
                 if 'Data' in worksheet.columns:
                     worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce', dayfirst=True)
@@ -287,7 +293,7 @@ def create_filters_sidebar(df):
         Diccionari amb tots els filtres seleccionats
     """
     st.sidebar.markdown("---")
-    st.sidebar.header("🔍 Filtre de variables")
+    st.sidebar.header("🔍 Filtres de variables")
     
     # Selector de mètrica
     metrica = st.sidebar.selectbox(
