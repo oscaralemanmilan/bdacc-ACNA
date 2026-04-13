@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import pydeck as pdk
 import streamlit as st
 
 from config.settings import COLORS, MAP_CONFIG
@@ -60,94 +59,7 @@ def get_map_center_zoom(dff):
     return center, zoom
 
 
-def get_simplified_tooltip_html():
-    return """
-    <b>{Lloc}</b><br/>
-    Data: {Data}<br/>
-    Perill: {Grau de perill}<br/>
-    Origen: {Origen}<br/>
-    Desencadenant: {Desencadenant}<br/>
-    Morts: {Morts} | Ferits: {Ferits} | Arrossegats: {Arrossegats}
-    """
-
-
 # --- VISUALITZACIONS ---
-
-def create_map_layer(dff, show_points=True, show_heatmap=False,
-                     point_radius=5, point_opacity=0.8,
-                     heat_radius=6, heat_intensity=10.0, map_style=None):
-
-    if dff is None or dff.empty:
-        return None
-
-    center, zoom = get_map_center_zoom(dff)
-    view_state = pdk.ViewState(
-        latitude=center["lat"],
-        longitude=center["lon"],
-        zoom=zoom
-    )
-
-    if map_style is None:
-        map_style_url = MAP_CONFIG['available_styles'][MAP_CONFIG['current_style']]
-    else:
-        map_style_url = MAP_CONFIG['available_styles'][map_style]
-
-    layers = []
-
-    if map_style in ["Topogràfic", "IGN Raster", "OSM Tiles"]:
-        try:
-            tile_key_map = {
-                "Topogràfic": "stamen_terrain",
-                "IGN Raster": "ign_raster",
-                "OSM Tiles": "test_osm"
-            }
-            tile_url = MAP_CONFIG['tile_layer_urls'][tile_key_map[map_style]]
-            layers.insert(0, pdk.Layer("TileLayer", data=tile_url, tile_size=256))
-            map_style_url = None
-        except Exception:
-            map_style_url = MAP_CONFIG['available_styles']['Fosc']
-
-    if show_points:
-        dff_tooltip = dff.copy()
-        alpha = int(point_opacity * 255)
-        layer_points = pdk.Layer(
-            "ScatterplotLayer",
-            data=dff_tooltip,
-            get_position='[Longitud, Latitud]',
-            get_radius=point_radius,
-            get_fill_color=[
-                COLORS['turquoise_rgb'][0],
-                COLORS['turquoise_rgb'][1],
-                COLORS['turquoise_rgb'][2],
-                alpha
-            ],
-            radius_units="pixels",
-            pickable=True
-        )
-        layers.append(layer_points)
-
-    if show_heatmap:
-        dff_heat = dff.copy()
-        dff_heat["_weight"] = 1.0
-        layers.append(pdk.Layer(
-            "HeatmapLayer",
-            data=dff_heat,
-            get_position='[Longitud, Latitud]',
-            get_weight="_weight",
-            radiusPixels=heat_radius,
-            intensity=heat_intensity,
-            colorRange=COLORS['heatmap_gradient']
-        ))
-
-    return pdk.Deck(
-        layers=layers,
-        initial_view_state=view_state,
-        map_style=map_style_url,
-        tooltip={
-            "html": get_simplified_tooltip_html(),
-            "style": {"backgroundColor": "rgba(14,17,23,0.92)", "color": "white"}
-        }
-    )
 
 
 def create_temporal_chart(dff, chart_type="Barres"):
@@ -183,7 +95,10 @@ def create_temporal_chart(dff, chart_type="Barres"):
             barmode="group", template="plotly", title="Evolució per Temporada"
         )
 
-    fig.update_layout(height=480)
+    fig.update_layout(
+        height=480,
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
     return fig
 
 
@@ -332,10 +247,13 @@ def create_data_table(dff, original_file_path=None):
         col1, col2 = st.columns(2)
         with col1:
             if st.button("📝 Editar Taula", use_container_width=True, type="primary"):
-                st.session_state._staged_edits = st.session_state.df_editable.copy()
-                st.session_state.editing_table = True
-                st.session_state._edit_row_index = None
-                st.rerun()
+                if not is_gsheets:
+                    st.info("No tens permisos d'edició, però pots seguir explorant la casuística d'accidentalitat.")
+                else:
+                    st.session_state._staged_edits = st.session_state.df_editable.copy()
+                    st.session_state.editing_table = True
+                    st.session_state._edit_row_index = None
+                    st.rerun()
         with col2:
             st.download_button("📥 Exportar Excel", data=_prepare_excel(st.session_state.df_editable), 
                                file_name=f'export_{datetime.now().strftime("%Y%m%d")}.xlsx', use_container_width=True)

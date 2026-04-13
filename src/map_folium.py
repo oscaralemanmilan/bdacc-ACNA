@@ -12,7 +12,7 @@ from config.settings import MAP_CONFIG
 from branca.element import Template, MacroElement
 
 
-def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new_point=None, selected_map="Fosc"):
+def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new_point=None, selected_map="Fosc", allow_edit=True):
     """
     Crea un mapa interactiu amb Folium i múltiples capes base.
     
@@ -30,6 +30,8 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
         Coordenades del nou punt per mostrar marcador de borrador
     selected_map : str
         Mapa seleccionado per defecte ("Fosc", "Clar", "Standard", "Topogràfic", "Satèl·lit")
+    allow_edit : bool
+        Si permet editar el mapa, mostrant alertes altrament
     
     Retorna:
     --------
@@ -111,6 +113,7 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
     initial_bg = "#02bfad" if edit_mode else "white"
     initial_color = "white" if edit_mode else "#333"
     initial_cursor = "crosshair" if edit_mode else "grab" # 'grab' es mejor que 'default' en mapas
+    js_allow_edit = "true" if allow_edit else "false"
     
     edit_control = MacroElement()
     edit_control._template = Template(f'''
@@ -136,6 +139,13 @@ def create_folium_map(dff, show_points=True, auto_fit=True, edit_mode=False, new
             
             div.onclick = function(e) {{
                 L.DomEvent.stopPropagation(e);
+                
+                var jsAllowEdit = {js_allow_edit};
+                if (!jsAllowEdit) {{
+                    alert("No tens permisos d'edició.");
+                    return;
+                }}
+                
                 editMode = !editMode;
                 
                 // Actualizar UI

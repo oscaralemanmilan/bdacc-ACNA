@@ -135,7 +135,7 @@ DATA_CONFIG = {
 # --------------------------------------------------------
 UI_CONFIG = {
     # Títols i textos
-    "app_title": "BASE DE DADES D'ACCIDENTS PER ALLAUS - ACNA",
+    "app_title": "BASE DE DADES D'ACCIDENTS PER ALLAUS",
     
     # Opcions de mètriques
     "metric_options": ["Accidents","Morts","Ferits","Arrossegats"],
@@ -147,11 +147,13 @@ UI_CONFIG = {
     "composition_chart_types": ["Pastís", "Barres (V)", "Barres (H)"],
     
     # Opcions d'origen de dades
-    "data_sources": ["Google Sheets (Editable)", "Google Sheets (Lectura)", "Fitxer Local", "Fitxer Local Personalitzat"],
+    "data_sources": ["Google Sheets (Editable)", "Google Sheets (Lectura)"],
     
     # Rutes d'assets
     "logo_path": "assets/brand-acna-02.jpg",
-    "logo_width": 200
+    "logo_width": 200,
+    "sidebar_logo_path": "assets/brand-acna-02.jpg",
+    "sidebar_logo_width": 200
 }
 
 # --------------------------------------------------------
@@ -199,7 +201,10 @@ HTML_TEMPLATES = {
     # Template per peu de pàgina
     "footer": """
     <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: #888; opacity: 1;">
-        <div><b>Desenvolupament:</b> Òscar Alemán-Milán © 2026 |   |<b> Base de dades:</b>   Associació per al Coneixement de la Neu i les Allaus (ACNA), ICGC, Centre de Lauegi d'Aran i ARI.</div>
+        <div><b>Edició:</b> Comissió d'Accidents ACNA ||<b> Desenvolupament:</b> Òscar Alemán-Milán © 2026.</div>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: #888; opacity: 1;">
+        <div><b>Base de dades col·laborativa:</b> Associació per al Coneixement de la Neu i les Allaus (ACNA), Institut Cartogràfic i Geològic de Catalunya (ICGC), Centre de Lauegi d'Aran i Andorra Recerca i Innovació (AR+I).</div>
     </div>
     """,
     

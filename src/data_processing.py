@@ -229,6 +229,10 @@ def load_from_gsheet(url):
     csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv"
     
     df = pd.read_csv(csv_url)
+    
+    if "Data" in df.columns:
+        df["Data"] = pd.to_datetime(df["Data"], errors="coerce", dayfirst=True)
+        
     return process_data(df)
 
 

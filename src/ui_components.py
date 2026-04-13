@@ -42,9 +42,25 @@ def inject_custom_styles():
 [data-testid="stSidebar"][data-theme="dark"] * {{ color: #ffffff !important; }}
 [data-testid="stSidebar"][data-theme="light"] {{ background-color: {COLORS['sidebar_light']} !important; }}
 [data-testid="stSidebar"][data-theme="light"] * {{ color: #000000 !important; }}
-/* Reduir padding del sidebar */
-[data-testid="stSidebar"] > div {{ padding: 1rem 0.5rem !important; }}
+/* Reduir padding del sidebar al mínim */
+[data-testid="stSidebar"] > div {{ padding: 0rem 0.5rem !important; }}
 [data-testid="stSidebar"] > section {{ padding: 0 0.5rem !important; }}
+
+/* Eliminar marges dels títols del sidebar per pujar el contingut */
+[data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2 {{
+    margin-top: 0px !important;
+    padding-top: 0px !important;
+}}
+
+/* Control visual del logo del sidebar (més robust) */
+[data-testid="stSidebarUserContent"] div[data-testid="stImage"] img {{
+    margin-top: 30px !important;      
+    margin-bottom: 10px !important;   
+    margin-left: auto !important;
+    margin-right: auto !important;
+    display: block !important;
+    width: {UI_CONFIG['sidebar_logo_width']}px !important;
+}}
 
 /* Camps d'entrada */
 .stApp[data-theme="dark"] div[data-baseweb="select"] > div,
@@ -67,6 +83,30 @@ def inject_custom_styles():
 
 /* Espaiat principal */
 section.main > div {{ padding-top: 0rem !important; }}
+[data-testid="stHeader"] {{ background: rgba(0,0,0,0); }}
+
+/* Control de padding superior de títols */
+/* Control d'espais superiors (Netejat) */
+h1 {{ 
+    margin-top: -40px !important; 
+    margin-bottom: 0px !important; 
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+}}
+.main .block-container {{ padding-top: 0px !important; }}
+/* Alinear logo amb el títol */
+[data-testid="stImage"] {{
+    margin-top: -65px !important;
+    margin-bottom: 0px !important; 
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+}}
+h3 {{ 
+    margin-top: 15px !important; 
+    margin-bottom: 15px !important;
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+}}
 
 /* Llegenda del mapa de calor */
 #heatmap-legend {{
@@ -91,11 +131,16 @@ section.main > div {{ padding-top: 0rem !important; }}
 #heatmap-legend .note {{ color: #9bd7cf; font-size: 11px; margin-top: 4px; }}
 
 /* Caixes de KPI */
-.kpi-box {{ background: #12151c; border: 1px solid #263042; border-radius: 0px; padding: 12px 14px; }}
+.kpi-box {{ background: #12151c; border: 1px solid #263042; border-radius: 0px; padding: 12px 14px; margin-top: 0px !important; margin-bottom: 15px !important; }}
 .kpi-title {{ color: #9bd7cf; font-size: 12px; margin-bottom: 6px; text-transform: uppercase; }}
 .kpi-value {{ color: #ffffff; font-size: 22px; font-weight: 700; margin-bottom: 4px; }}
 .kpi-sub {{ color: #d0d4da; font-size: 12px; }}
-
+      
+/* Control d'espaiat per a gràfics Plotly */
+[data-testid="stPlotlyChart"] {{
+    margin-top: 0 !important;
+    margin-bottom: 10px !important;
+}}
 /* Peu de pàgina fixat */
 .footer-fixat {{
     position: fixed;
@@ -131,6 +176,12 @@ def create_data_source_sidebar():
     tuple
         (df, has_data, data_source) - DataFrame carregat, booleà si hi ha dades, i font de dades
     """
+    # Logo del sidebar configurat (primera posició)
+    st.sidebar.image(
+        UI_CONFIG['sidebar_logo_path'], 
+        width=UI_CONFIG['sidebar_logo_width']
+    )
+
     st.sidebar.header("📊 Origen de dades")
     
     origen = st.sidebar.radio(
@@ -147,7 +198,7 @@ def create_data_source_sidebar():
     worksheet = None
     
     if origen == "Google Sheets (Editable)":
-        st.sidebar.markdown("**📝 Google Sheets (Editable)**")
+        st.sidebar.markdown("**📝 Versió d'anàlisi i edició**")
         st.sidebar.info("☁ Els canvis es desaran al núvol")
         
         
@@ -178,14 +229,14 @@ def create_data_source_sidebar():
             sidebar_error(f"Error connexió Google Sheets: {e}")
     
     elif origen == "Google Sheets (Lectura)":
-        st.sidebar.markdown("**📖 Google Sheets (Lectura)**")
-        st.sidebar.info("🔒 Mode només lectura")
+        st.sidebar.markdown("**📖 Versió exclusivament d'anàlisi**")
+        st.sidebar.info("🔒 Mode només lectura (cal que el document sigui públic)")
         
         # Campo para introducir enlace completo del spreadsheet
         spreadsheet_url = st.sidebar.text_input(
             "Enllaç del Google Sheets",
             value="",
-            help="Enganxa l'enllaç complet del Google Sheets. Ex: https://docs.google.com/spreadsheets/d/ID_AQUI/edit",
+            help="Enganxa l'enllaç complet del Google Sheets compartit públicament. Ex: https://docs.google.com/spreadsheets/d/ID_AQUI/edit",
             key="spreadsheet_url_readonly"
         )
         
@@ -196,83 +247,19 @@ def create_data_source_sidebar():
             return df, False, origen
         
         try:
-            # Extraer el ID del spreadsheet de la URL
-            if "/d/" in spreadsheet_url:
-                spreadsheet_id = spreadsheet_url.split("/d/")[1].split("/")[0]
-            else:
-                st.sidebar.error("❌ L'enllaç no és vàlid. Ha de contenir '/d/'")
-                df = pd.DataFrame()
-                st.session_state.data_source = "none"
-                return df, False, origen
-            
-            # Conexión a Google Sheets en modo lectura
-            conn = st.connection("gsheets", type=GSheetsConnection)
-            worksheet = conn.read(spreadsheet=spreadsheet_id, ttl=0)
-            
-            if worksheet is not None and not worksheet.empty:
-                # Això elimina files que no tenen absolutament cap dada (comunes a GSheets)
-                worksheet = worksheet.dropna(how='all')
-                
-                # Convertir columna 'Data' a datetime
-                if 'Data' in worksheet.columns:
-                    worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce', dayfirst=True)
-                    
-                    # Crear columna Mes para el filtro (extraído de data_processing.py)
-                    from .data_processing import MESOS_CAT
-                    worksheet['Mes'] = worksheet['Data'].dt.month.map(MESOS_CAT)
-                
-                df = worksheet
+            df = load_from_gsheet(spreadsheet_url)
+            if df is not None and not df.empty:
                 st.session_state.data_source = "gsheets_readonly"
                 sidebar_success("Google Sheets (Lectura) carregat correctament!")
             else:
                 sidebar_error("No s'han pogut carregar les dades de Google Sheets")
         except Exception as e:
             sidebar_error(f"Error connexió Google Sheets: {e}")
-    
-    elif origen == "Fitxer Local":
-        st.sidebar.markdown("**💾 Fitxer Local**")
-        st.sidebar.write(f"Fitxer local per defecte: `{local_file}`")
-        
-        if os.path.exists(local_file):
-            df = load_data(local_file)
-            if df is not None:
-                st.session_state.data_source = "local"
-                st.session_state.current_file_path = local_file
-                sidebar_success("Fitxer per defecte carregat correctament!")
-        else:
-            sidebar_error("No s'ha trobat el fitxer per defecte!")
-    
-    elif origen == "Fitxer Local Personalitzat":
-        st.sidebar.markdown("**📁 Fitxer Local Personalitzat**")
-        st.sidebar.warning("⚠️ L'edició de fitxers locals no es desa permanentment. Per desar canvis, utilitza la base de dades Google Sheets.")
-        
-        uploaded_file = st.sidebar.file_uploader(
-            "Arrossega i deixa anar un fitxer Excel aquí", 
-            type=["xlsx"], 
-            key="uploader"
-        )
-        
-        if uploaded_file is not None:
-            try:
-                df = load_data(uploaded_file)
-                st.session_state.data_source = "local_custom"
-                sidebar_success("Nou fitxer local carregat!")
-            except Exception as e:
-                sidebar_error(f"No s'ha pogut llegir el fitxer: {e}")
+            df = pd.DataFrame()
     
     if df is None:
         df = pd.DataFrame()  # DataFrame buit per permetre que el codi continuï
         st.session_state.data_source = "none"
-    
-    # Selector de Sistema de Mapes
-    st.sidebar.markdown("---")
-    st.sidebar.header("🗺️ Sistema de Mapes")
-    map_system = st.sidebar.selectbox(
-        "Tecnologia de mapa",
-        ["Pydeck (Visualització)", "Folium (Avançat)"],
-        index=0 if st.session_state.get('map_system', 'Folium (Avançat)') == 'Pydeck' else 1
-    )
-    st.session_state.map_system = map_system
     
     has_data = not df.empty
     return df, has_data, origen
@@ -293,7 +280,7 @@ def create_filters_sidebar(df):
         Diccionari amb tots els filtres seleccionats
     """
     st.sidebar.markdown("---")
-    st.sidebar.header("🔍 Filtres de variables")
+    st.sidebar.header("🔍 Filtres per a l'anàlisi")
     
     # Selector de mètrica
     metrica = st.sidebar.selectbox(
@@ -371,89 +358,6 @@ def create_map_style_controls():
     }
 
 
-def create_map_controls_with_styles():
-    """
-    Crea els controls del mapa incloent estils, integrats amb la vista del mapa.
-    
-    Retorna:
-    --------
-    dict
-        Configuració completa del mapa
-    """
-    # Crear 7 columnes per als controls
-    col1, col2, col3, col4, col5, col6, col7 = st.columns([1, 1, 1, 1, 1, 1, 1.5])
-    
-    with col1:
-        show_points = st.checkbox("📍 Punts", value=True)
-    
-    with col2:
-        point_radius = st.slider("Radi", 1, 80, MAP_CONFIG['default_point_radius'])
-    
-    with col3:
-        point_opacity = st.slider("Opacitat", 0.1, 1.0, MAP_CONFIG['default_point_opacity'])
-    
-    with col4:
-        show_heatmap = st.checkbox("🔥 Heatmap", value=False)
-    
-    with col5:
-        heat_radius = st.slider("Radi H", 1, 40, MAP_CONFIG['default_heat_radius'])
-    
-    with col6:
-        heat_intensity = st.slider("Intensitat", 0.2, 20.0, MAP_CONFIG['default_heat_intensity'])
-    
-    with col7:
-        map_style = st.selectbox(
-            "🗺️ Estil mapa",
-            list(MAP_CONFIG['available_styles'].keys()),
-            index=list(MAP_CONFIG['available_styles'].keys()).index(MAP_CONFIG['current_style'])
-        )
-    
-    return {
-        'style': map_style,
-        'show_points': show_points,
-        'show_heatmap': show_heatmap,
-        'point_radius': point_radius,
-        'point_opacity': point_opacity,
-        'heat_radius': heat_radius,
-        'heat_intensity': heat_intensity
-    }
-
-
-def create_map_controls():
-    """
-    Crea els controls de configuració del mapa.
-    
-    Retorna:
-    --------
-    dict
-        Configuració del mapa seleccionada per l'usuari
-    """
-    c1, c2 = st.columns([1,1])
-    with c1:
-        mostra_punts = st.checkbox("Mostrar punts 📍", True)
-    with c2:
-        mostra_heatmap = st.checkbox("Mostrar mapa de calor 🔥", False)
-    
-    cpa, cpb, cpc, cpd = st.columns([1,1,1,1])
-    with cpa:
-        radi = st.slider("Radi punt", 4, 80, 5)
-    with cpb:
-        alpha_val = st.slider("Opacitat punts", 0.1, 1.0, 0.8)
-    with cpc:
-        heat_radius = st.slider("Radi heatmap", 1, 40, 6)
-    with cpd:
-        heat_intensity = st.slider("Intensitat", 0.2, 20.0, 10.0)
-    
-    return {
-        'show_points': mostra_punts,
-        'show_heatmap': mostra_heatmap,
-        'point_radius': radi,
-        'point_opacity': alpha_val,
-        'heat_radius': heat_radius,
-        'heat_intensity': heat_intensity
-    }
-
-
 def create_page_header():
     """
     Crea la capçalera de la pàgina amb títol i logo.
@@ -464,8 +368,8 @@ def create_page_header():
     with col_logo:
         st.image(UI_CONFIG['logo_path'], width=UI_CONFIG['logo_width'])
     
-    # Espai extra després de la capçalera
-    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+    # Espai extra després de la capçalera (controlable)
+    st.markdown("<div style='margin-bottom: -50px;'></div>", unsafe_allow_html=True)
 
 
 def create_composition_chart_controls(vars_percent):

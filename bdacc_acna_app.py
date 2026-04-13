@@ -20,7 +20,6 @@ from src.ui_components import (
     create_data_source_sidebar,
     create_filters_sidebar,
     create_footer,
-    create_map_controls_with_styles,
     create_page_header,
     inject_custom_styles,
     show_empty_data_message,
@@ -30,7 +29,6 @@ from src.visualization import (
     create_composition_charts,
     create_data_table,
     create_kpi_dashboard,
-    create_map_layer,
     create_temporal_chart,
     ensure_pyarrow_compatibility,
     render_kpi_boxes,
@@ -53,7 +51,6 @@ def main():
     defaults = {
         'selected_accident': None,
         'clicked_coords': None,
-        'map_system': 'Folium (Avançat)',
         'edit_mode': False,
         'new_point_coords': None,
         'last_processed_click': None,
@@ -62,15 +59,6 @@ def main():
         if key not in st.session_state:
             st.session_state[key] = val
 
-
-    # --- BOTÓ PER FORÇAR LA SINCRONITZACIÓ ---
-    with st.sidebar:
-        st.markdown("### 🔄 Sincronització")
-        if st.button("Forçar refresc de dades (Google Sheets)", use_container_width=True):
-            st.cache_data.clear() 
-            if 'df_oficial' in st.session_state:
-                del st.session_state['df_oficial'] 
-            st.rerun() 
 
     # Càrrega normal
     if 'df_oficial' not in st.session_state:
@@ -108,11 +96,7 @@ def main():
     if dff.empty:
         show_empty_data_message(has_data)
     else:
-        if st.session_state.map_system == 'Folium (Avançat)':
-            render_folium_map_section(dff)
-        else:
-            render_map_section(dff)
-
+        render_folium_map_section(dff)
         render_charts_section(dff)
         render_data_table_section(dff)
 
@@ -134,7 +118,8 @@ def render_map_zone(dff):
         show_points=folium_config['show_points'],
         auto_fit=False,
         edit_mode=st.session_state.edit_mode,
-        new_point=st.session_state.new_point_coords
+        new_point=st.session_state.new_point_coords,
+        allow_edit=(st.session_state.get('data_source') == 'gsheets_editable')
     )
 
     output = st_folium(
@@ -192,22 +177,6 @@ def render_map_zone(dff):
 
 def render_folium_map_section(dff):
     render_map_zone(dff)
-
-
-def render_map_section(dff):
-    map_config = create_map_controls_with_styles()
-    deck = create_map_layer(
-        dff,
-        show_points=map_config['show_points'],
-        show_heatmap=map_config['show_heatmap'],
-        point_radius=map_config['point_radius'],
-        point_opacity=map_config['point_opacity'],
-        heat_radius=map_config['heat_radius'],
-        heat_intensity=map_config['heat_intensity'],
-        map_style=map_config['style']
-    )
-    if deck:
-        st.pydeck_chart(deck, width='stretch')
 
 
 # ---------------------------------------------------------------------------
@@ -330,11 +299,12 @@ def guardar_accident(id_accident="", codi=None, temporada="", data=None,
     file_path = "data/bd_accidents_200726_net_c.xlsx"
 
     try:
-        if is_gsheets:
-            conn = st.session_state.get('gsheets_conn')
-            df_existing = conn.read()
-        else:
-            df_existing = pd.read_excel(file_path, engine="openpyxl")
+        if not is_gsheets:
+            st.error("❌ Només es permet desar canvis si estàs connectat a Google Sheets (Editable).")
+            return
+            
+        conn = st.session_state.get('gsheets_conn')
+        df_existing = conn.read()
 
         # Neteja de noms de columnes per evitar l'error 'Observacions '
         df_existing.columns = df_existing.columns.str.strip()
@@ -390,14 +360,11 @@ def guardar_accident(id_accident="", codi=None, temporada="", data=None,
             if col in df_final.columns:
                 df_final[col] = pd.to_numeric(df_final[col], errors='coerce').astype('Int64')
 
-        if is_gsheets:
-            df_to_save = ensure_pyarrow_compatibility(df_final)
-            # Neteja final per GSheets
-            string_cols = df_to_save.select_dtypes(include='object').columns
-            df_to_save[string_cols] = df_to_save[string_cols].fillna("")
-            conn.update(worksheet="Accidents", data=df_to_save)
-        else:
-            df_final.to_excel(file_path, index=False, engine='openpyxl')
+        df_to_save = ensure_pyarrow_compatibility(df_final)
+        # Neteja final per GSheets
+        string_cols = df_to_save.select_dtypes(include='object').columns
+        df_to_save[string_cols] = df_to_save[string_cols].fillna("")
+        conn.update(worksheet="Accidents", data=df_to_save)
 
         st.session_state.df_oficial = df_final
         st.session_state.new_point_coords = None
@@ -421,8 +388,13 @@ def render_charts_section(dff):
     
     st.markdown("### Anàlisi Categòrica")
     chart_config = create_composition_chart_controls(VARS_PERCENT)
+    
+    chart_types = ["Pastís", "Barres (V)", "Barres (H)"]
+    t1_idx = chart_types.index(chart_config['type1'])
+    t2_idx = chart_types.index(chart_config['type2'])
+    
     fig1, fig2 = create_composition_charts(dff, VARS_PERCENT, VARS_PERCENT.index(chart_config['var1']), 
-                                          VARS_PERCENT.index(chart_config['var2']), 0, 0)
+                                          VARS_PERCENT.index(chart_config['var2']), t1_idx, t2_idx)
     c1, c2 = st.columns(2)
     c1.plotly_chart(fig1)
     c2.plotly_chart(fig2)
@@ -430,6 +402,17 @@ def render_charts_section(dff):
 def render_data_table_section(dff):
     with st.expander("📋 Dades filtrades", expanded=True):
         create_data_table(dff, "data/bd_accidents_200726_net_c.xlsx")
+    
+    # --- BOTÓ PER FORÇAR LA SINCRONITZACIÓ ---
+    st.markdown("---")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("### 🔄 Sincronització de Dades")
+        if st.button("Forçar refresc (Google Sheets)", use_container_width=True, type="secondary"):
+            st.cache_data.clear() 
+            if 'df_oficial' in st.session_state:
+                del st.session_state['df_oficial'] 
+            st.rerun()
 
 if __name__ == "__main__":
     main()
