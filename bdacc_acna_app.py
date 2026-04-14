@@ -527,12 +527,7 @@ def render_data_table_section(dff):
                         st.rerun()
                     else:
                         base64_pdf = base64.b64encode(st.session_state.pdf_preview_bytes).decode('utf-8')
-                        pdf_display = f'<object data="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf">' \
-                                      f'<embed src="data:application/pdf;base64,{base64_pdf}" type="application/pdf" />' \
-                                      f'<div style="text-align: center; padding: 20px; border: 1px solid #ccc;">' \
-                                      f'El teu navegador no permet la previsualització directa. ' \
-                                      f'Si us plau, utilitza el botó <b>📥 Descarregar</b> de la llista superior.' \
-                                      f'</div></object>'
+                        pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="1000" type="application/pdf">'
                         st.markdown(pdf_display, unsafe_allow_html=True)
                 
                 if len(all_selected_set) > 1:
