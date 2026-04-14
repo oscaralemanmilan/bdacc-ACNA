@@ -16,7 +16,7 @@ import os
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
 from src.data_processing import load_data, load_from_gsheet, get_column_options
-from config.settings import COLORS, UI_CONFIG, HTML_TEMPLATES, DEFAULT_DATA_FILE, MAP_CONFIG
+from config.settings import COLORS, UI_CONFIG, HTML_TEMPLATES, MAP_CONFIG
 
 
 def inject_custom_styles():
