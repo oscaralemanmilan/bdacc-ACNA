@@ -493,14 +493,11 @@ def render_data_table_section(dff):
                     
                     pdf_files[file_name] = pdf_bytes
                     
-                    col_n, col_p, col_b, col_rm = st.columns([4, 1, 1, 0.5])
+                    col_n, col_b, col_rm = st.columns([5, 1.5, 0.5])
                     val_vertical = f"<div style='padding-top: 10px; font-weight: 500;'>📄 {acc}</div>"
                     col_n.markdown(val_vertical, unsafe_allow_html=True)
                     
-                    with col_p:
-                        if st.button("👁️ Veure", key=f"prev_pdf_{row['Codi']}", use_container_width=True):
-                            st.session_state.pdf_preview_bytes = pdf_bytes
-                            st.session_state.pdf_preview_name = file_name
+
                     
                     with col_b:
                         st.download_button(
@@ -517,18 +514,7 @@ def render_data_table_section(dff):
                             st.session_state.pdf_excluded.add(acc)
                             st.rerun()
                 
-                # Previsualitzador en línia
-                if 'pdf_preview_bytes' in st.session_state and st.session_state.pdf_preview_bytes:
-                    st.markdown("---")
-                    col_t, col_cx = st.columns([4,1])
-                    col_t.markdown(f"**Previsualitzant: {st.session_state.pdf_preview_name}**")
-                    if col_cx.button("Tancar Previsualització", use_container_width=True):
-                        del st.session_state['pdf_preview_bytes']
-                        st.rerun()
-                    else:
-                        base64_pdf = base64.b64encode(st.session_state.pdf_preview_bytes).decode('utf-8')
-                        pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="1000" type="application/pdf">'
-                        st.markdown(pdf_display, unsafe_allow_html=True)
+
                 
                 if len(all_selected_set) > 1:
                     st.markdown("---")
