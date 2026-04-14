@@ -135,7 +135,7 @@ def process_data(df):
 
 
 @st.cache_data
-def load_data_smart(file_path="data/bd_accidents_200726_net_c.xlsx"):
+def load_data_smart(file_path=None):
     """
     Carrega dades amb prioritat: arxiu editat > arxiu original.
     
@@ -151,24 +151,17 @@ def load_data_smart(file_path="data/bd_accidents_200726_net_c.xlsx"):
     """
     from pathlib import Path
     
-    # Primer verificar si existeix l'arxiu editat
-    edited_file = Path("data/bdacc_data_edited.csv")
-    if edited_file.exists():
-        try:
-            df = pd.read_csv(edited_file, encoding='utf-8')
-            return process_data(df)
-        except Exception as e:
-            print(f"Error carregant arxiu editat: {e}")
-            # Si falla, continuar amb l'arxiu original
-    
-    # Carregar arxiu original
+    # Si no s'especifica fitxer, retornar None
+    if file_path is None:
+        return None
+        
     return load_data(file_path)
 
 
 @st.cache_data
-def load_data(file_path="data/bd_accidents_200726_net_c.xlsx"):
+def load_data(file_path=None):
     """
-    Carrega dades des d'un fitxer Excel local.
+    Carrega dades des d'un fitxer local (Excel o CSV).
     
     Paràmetres:
     ----------
@@ -182,7 +175,7 @@ def load_data(file_path="data/bd_accidents_200726_net_c.xlsx"):
     """
     if isinstance(file_path, str):
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Fitxer no trobat: {file_path}")
+            return None
         df = pd.read_excel(file_path, engine="openpyxl")
         
         # SOLUCIÓN PARA FORMATO AÑO-MES-DIA HH:MM:SS

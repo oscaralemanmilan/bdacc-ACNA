@@ -15,7 +15,6 @@ PAGE_CONFIG = {
     "layout": "wide"
 }
 
-DEFAULT_DATA_FILE = "data/bd_accidents_200726_net_c.xlsx"  # Pot tenir problemes de permisos
 
 # --------------------------------------------------------
 # COLORS I ESTILS

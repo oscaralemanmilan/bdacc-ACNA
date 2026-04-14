@@ -38,10 +38,7 @@ from src.visualization import (
 )
 
 
-@st.cache_data
-def load_main_data():
-    """Càrrega centralitzada de dades amb cache per optimitzar rendiment."""
-    return load_data("data/bd_accidents_200726_net_c.xlsx")
+
 
 
 def main():
@@ -63,13 +60,9 @@ def main():
             st.session_state[key] = val
 
 
-    # Càrrega normal
+    # Inicialització del DataFrame oficial (comença buit per forçar selecció d'origen)
     if 'df_oficial' not in st.session_state:
-        try:
-            st.session_state.df_oficial = load_main_data()
-        except Exception as e:
-            st.error(f"Error carregant dades: {e}")
-            st.session_state.df_oficial = pd.DataFrame()
+        st.session_state.df_oficial = pd.DataFrame()
 
     create_page_header()
 

@@ -190,7 +190,6 @@ def create_data_source_sidebar():
         key="origen"
     )
     
-    local_file = DEFAULT_DATA_FILE
     df = None
     
     # Inicializar variables para Google Sheets
