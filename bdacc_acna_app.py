@@ -1,7 +1,9 @@
+
 """
+================================================================================
 Base de Dades d'Accidents per Allaus - ACNA
-==========================================
-Versió actualitzada amb correcció de dtypes i neteja de columnes.
+================================================================================
+Fitxer principal (main)
 """
 
 import shutil
@@ -32,6 +34,7 @@ from src.visualization import (
     create_temporal_chart,
     ensure_pyarrow_compatibility,
     render_kpi_boxes,
+    render_tracklog_section
 )
 
 
@@ -203,7 +206,7 @@ def render_accident_form(clicked_coords):
             temporada = st.selectbox("Temporada", options=temp_options, index=(len(temp_options)-1))
             data_accident = st.date_input("Data", value=pd.Timestamp.now().date(), format="DD/MM/YYYY")
 
-            st.markdown("###### 🌍 Geogràfiques")
+            st.markdown("###### 🌍 Dades geogràfiques")
             lloc = st.text_input("📍 Lloc", value=f"Nou accident ({clicked_coords['lat']:.4f}, {clicked_coords['lng']:.4f})")
             latitud = st.number_input("Latitud", value=clicked_coords['lat'], format="%.6f")
             longitud = st.number_input("Longitud", value=clicked_coords['lng'], format="%.6f")  
@@ -234,7 +237,7 @@ def render_accident_form(clicked_coords):
             ferits = st.number_input("Ferits", min_value=0, value=0)
             morts = st.number_input("Morts", min_value=0, value=0)
 
-            st.markdown("###### ❄️ Perill i Allaus")
+            st.markdown("###### ❄️ Perill, neu i allaus")
             perill_opts = [""] + list(get_column_options(df_ref, "Grau de perill")) if df_ref is not None else [""]
             grau_perill = st.selectbox("⚠ Grau de perill", options=perill_opts, index=0)
             orig_opts = [""] + list(get_column_options(df_ref, "Origen")) if df_ref is not None else [""]
@@ -412,7 +415,148 @@ def render_data_table_section(dff):
             st.cache_data.clear() 
             if 'df_oficial' in st.session_state:
                 del st.session_state['df_oficial'] 
+            if 'gs_readonly_connected' in st.session_state:
+                del st.session_state['gs_readonly_connected']
             st.rerun()
+
+    # --- GENERACIÓ D'INFORMES PDF ---
+    data_source_current = st.session_state.get('data_source', 'none')
+    if data_source_current == 'gsheets_editable':
+        st.markdown("---")
+        st.markdown("### 📄 Generació d'Informes PDF")
+        
+        df_src = st.session_state.df_oficial if 'df_oficial' in st.session_state else dff
+        if df_src is not None and not df_src.empty:
+            import io
+            import zipfile
+            import base64
+            from src.pdf_generator import generate_accident_pdf
+            
+            if 'pdf_excluded' not in st.session_state:
+                st.session_state.pdf_excluded = set()
+                
+            df_src_cerca = df_src.copy()
+            df_src_cerca['Data_obj'] = pd.to_datetime(df_src_cerca['Data'], errors='coerce')
+            
+            def format_data(dt, orig):
+                if pd.isna(dt): return str(orig)
+                return dt.strftime('%d/%m/%Y')
+                
+            def format_codi_int(x):
+                try:
+                    return str(int(float(x)))
+                except:
+                    return str(x)
+                
+            df_src_cerca['Data_str'] = df_src_cerca.apply(lambda r: format_data(r['Data_obj'], r['Data']), axis=1)
+            df_src_cerca['Codi_str'] = df_src_cerca['Codi'].apply(format_codi_int)
+            
+            nom_cerca = df_src_cerca['Codi_str'] + " | " + df_src_cerca['Lloc'].astype(str).fillna('Desconegut') + " | " + df_src_cerca['Data_str']
+            df_src_cerca['nom_accident_cerca'] = nom_cerca
+            
+            llista_accidents = df_src_cerca['nom_accident_cerca'].tolist()
+            
+            col_cerca, col_data = st.columns(2)
+            with col_cerca:
+                st.markdown("**Cerca manual:**")
+                accidents_manuals = st.multiselect("🔍 Seleccionar per Codi, Lloc o Data:", options=llista_accidents)
+                
+            with col_data:
+                st.markdown("**Selecció per rang de dates:**")
+                dates = st.date_input("Dates de l'accident:", value=(), key="dates_pdf")
+                
+            accidents_per_data = []
+            if len(dates) == 2:
+                start_date, end_date = dates
+                mask = df_src_cerca['Data_obj'].notna() & (df_src_cerca['Data_obj'].dt.date >= start_date) & (df_src_cerca['Data_obj'].dt.date <= end_date)
+                accidents_per_data = df_src_cerca[mask]['nom_accident_cerca'].tolist()
+                if not accidents_per_data:
+                    st.info("No hi ha accidents en aquest rang de dates.")
+                else:
+                    st.success(f"✓ S'han inclòs {len(accidents_per_data)} accidents pel rang de dates.")
+                    
+            # Obtenim tots i descartem els exclosos explícitament
+            candidats_set = list(dict.fromkeys(accidents_manuals + accidents_per_data))
+            all_selected_set = [acc for acc in candidats_set if acc not in st.session_state.pdf_excluded]
+            
+            if st.session_state.pdf_excluded and len(all_selected_set) < len(candidats_set):
+                if st.button("♻️ Restaurar llista original"):
+                    st.session_state.pdf_excluded.clear()
+                    st.rerun()
+            
+            if all_selected_set:
+                st.markdown("#### Llistat a Descarregar")
+                pdf_files = {}
+                for acc in all_selected_set:
+                    row = df_src_cerca[df_src_cerca['nom_accident_cerca'] == acc].iloc[0]
+                    pdf_bytes = generate_accident_pdf(row.to_dict())
+                    
+                    # Generar nom del fitxer
+                    codi_int_str = str(row['Codi_str'])
+                    lloc_safe = str(row['Lloc']).replace(' ', '_').replace('/', '_') if pd.notna(row['Lloc']) else 'NOL'
+                    data_dt = row['Data_obj']
+                    data_estr = data_dt.strftime('%Y%m%d') if pd.notna(data_dt) else 'NODATA'
+                    file_name = f"{data_estr}_Informe_Acc_{codi_int_str}_{lloc_safe}.pdf"
+                    
+                    pdf_files[file_name] = pdf_bytes
+                    
+                    col_n, col_p, col_b, col_rm = st.columns([4, 1, 1, 0.5])
+                    val_vertical = f"<div style='padding-top: 10px; font-weight: 500;'>📄 {acc}</div>"
+                    col_n.markdown(val_vertical, unsafe_allow_html=True)
+                    
+                    with col_p:
+                        if st.button("👁️ Veure", key=f"prev_pdf_{row['Codi']}", use_container_width=True):
+                            st.session_state.pdf_preview_bytes = pdf_bytes
+                            st.session_state.pdf_preview_name = file_name
+                    
+                    with col_b:
+                        st.download_button(
+                            label="📥 Descarregar",
+                            data=pdf_bytes,
+                            file_name=file_name,
+                            mime="application/pdf",
+                            key=f"btn_pdf_{row['Codi']}",
+                            use_container_width=True
+                        )
+                        
+                    with col_rm:
+                        if st.button("x", key=f"rm_pdf_{row['Codi']}", help="Eliminar de la llista"):
+                            st.session_state.pdf_excluded.add(acc)
+                            st.rerun()
+                
+                # Previsualitzador en línia
+                if 'pdf_preview_bytes' in st.session_state and st.session_state.pdf_preview_bytes:
+                    st.markdown("---")
+                    col_t, col_cx = st.columns([4,1])
+                    col_t.markdown(f"**Previsualitzant: {st.session_state.pdf_preview_name}**")
+                    if col_cx.button("Tancar Previsualització", use_container_width=True):
+                        del st.session_state['pdf_preview_bytes']
+                        st.rerun()
+                    else:
+                        base64_pdf = base64.b64encode(st.session_state.pdf_preview_bytes).decode('utf-8')
+                        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="600" type="application/pdf"></iframe>'
+                        st.markdown(pdf_display, unsafe_allow_html=True)
+                
+                if len(all_selected_set) > 1:
+                    st.markdown("---")
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                        for fname, fbytes in pdf_files.items():
+                            zip_file.writestr(fname, fbytes)
+                    
+                    c_buida, c_zip, c_buida2 = st.columns([1,2,1])
+                    with c_zip:
+                        st.download_button(
+                            label=f"📦 Descarregar Tots ({len(all_selected_set)} PDFs)",
+                            data=zip_buffer.getvalue(),
+                            file_name="Informes_Accidents_ACNA.zip",
+                            mime="application/zip",
+                            type="primary",
+                            use_container_width=True
+                        )
+            
+    # CRIDA A LA SECCIÓ DEL TRACKLOG
+    render_tracklog_section()
 
 if __name__ == "__main__":
     main()

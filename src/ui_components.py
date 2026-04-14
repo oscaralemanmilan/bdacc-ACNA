@@ -55,7 +55,7 @@ def inject_custom_styles():
 /* Control visual del logo del sidebar (més robust) */
 [data-testid="stSidebarUserContent"] div[data-testid="stImage"] img {{
     margin-top: 30px !important;      
-    margin-bottom: 10px !important;   
+    margin-bottom: 20px !important;   
     margin-left: auto !important;
     margin-right: auto !important;
     display: block !important;
@@ -198,10 +198,31 @@ def create_data_source_sidebar():
     worksheet = None
     
     if origen == "Google Sheets (Editable)":
-        st.sidebar.markdown("**📝 Versió d'anàlisi i edició**")
-        st.sidebar.info("☁ Els canvis es desaran al núvol")
         
+        # --- SISTEMA DE PROTECCIÓ PER CONTRASENYA ---
+        if "is_authenticated" not in st.session_state:
+            st.session_state.is_authenticated = False
+            
+        # Llegeix directament del fitxer secrets.toml.
+        correct_pwd = st.secrets["ADMIN_PASSWORD"]
         
+        if not st.session_state.is_authenticated:
+            st.sidebar.markdown("**📝 Versió d'anàlisi i edició**")
+            st.sidebar.info("☁ Els canvis es desaran al núvol")
+            pwd = st.sidebar.text_input("🔑 Contrasenya d'accés:", type="password")
+            
+            if pwd == correct_pwd:
+                st.session_state.is_authenticated = True
+                st.rerun() # Reinicia per amagar el camp
+            else:
+                if pwd:
+                    st.sidebar.error("❌ Contrasenya incorrecta.")
+                else:
+                    st.sidebar.warning("🔒 Cal contrasenya per accedir a l'edició.")
+                st.session_state.data_source = "none"
+                return pd.DataFrame(), False, origen
+        # ----------------------------------------------
+
         try:
             # Conexión a Google Sheets usando el spreadsheet del secrets.toml
             conn = st.connection("gsheets", type=GSheetsConnection)
@@ -222,6 +243,16 @@ def create_data_source_sidebar():
                 df = worksheet
                 st.session_state.data_source = "gsheets_editable"
                 st.session_state.gsheets_conn = conn
+                
+                # Descarregar també el document Tracklog
+                try:
+                    df_tracklog = conn.read(worksheet="Tracklog", ttl=0)
+                    df_tracklog = df_tracklog.dropna(how='all')
+                    st.session_state.df_tracklog = df_tracklog
+                except Exception as e_track:
+                    st.sidebar.warning(f"No s'ha trobat un full anomenat 'Tracklog'. {e_track}")
+                    st.session_state.df_tracklog = pd.DataFrame(columns=["Id edicio", "Data edicio", "Autor", "Codi accident", "Lloc accident", "Canvis introduits", "Actualitzat a la web"])
+
                 sidebar_success("✅ Connexió a Google Sheets")
             else:
                 sidebar_error("No s'han pogut carregar les dades de Google Sheets")
@@ -229,10 +260,14 @@ def create_data_source_sidebar():
             sidebar_error(f"Error connexió Google Sheets: {e}")
     
     elif origen == "Google Sheets (Lectura)":
-        st.sidebar.markdown("**📖 Versió exclusivament d'anàlisi**")
-        st.sidebar.info("🔒 Mode només lectura (cal que el document sigui públic)")
-        
-        # Campo para introducir enlace completo del spreadsheet
+        if "gs_readonly_connected" not in st.session_state:
+            st.session_state.gs_readonly_connected = False
+
+        if not st.session_state.gs_readonly_connected:
+            st.sidebar.markdown("**📖 Versió exclusivament d'anàlisi**")
+            st.sidebar.info("🔒 Mode només lectura (cal que el document sigui públic)")
+            
+        # El camp d'enllaç sempre visible
         spreadsheet_url = st.sidebar.text_input(
             "Enllaç del Google Sheets",
             value="",
@@ -250,7 +285,10 @@ def create_data_source_sidebar():
             df = load_from_gsheet(spreadsheet_url)
             if df is not None and not df.empty:
                 st.session_state.data_source = "gsheets_readonly"
-                sidebar_success("Google Sheets (Lectura) carregat correctament!")
+                if not st.session_state.gs_readonly_connected:
+                    st.session_state.gs_readonly_connected = True
+                    st.rerun()
+                sidebar_success("✅ Connexió a Google Sheets")
             else:
                 sidebar_error("No s'han pogut carregar les dades de Google Sheets")
         except Exception as e:

@@ -135,7 +135,7 @@ DATA_CONFIG = {
 # --------------------------------------------------------
 UI_CONFIG = {
     # Títols i textos
-    "app_title": "BASE DE DADES D'ACCIDENTS PER ALLAUS",
+    "app_title": "BDACC-ACNA | Base de dades d'accidents",
     
     # Opcions de mètriques
     "metric_options": ["Accidents","Morts","Ferits","Arrossegats"],
@@ -152,8 +152,8 @@ UI_CONFIG = {
     # Rutes d'assets
     "logo_path": "assets/brand-acna-02.jpg",
     "logo_width": 200,
-    "sidebar_logo_path": "assets/brand-acna-02.jpg",
-    "sidebar_logo_width": 200
+    "sidebar_logo_path": "assets/Logo_Bdacc_ACNA.png",
+    "sidebar_logo_width": 295
 }
 
 # --------------------------------------------------------

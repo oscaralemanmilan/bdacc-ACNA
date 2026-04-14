@@ -216,6 +216,19 @@ def create_data_table(dff, original_file_path=None):
 
     if 'Data' in dff.columns:
         dff = dff.sort_values(by='Data', ascending=False)
+        
+    ordre_desitjat = [
+        "Codi", "id", "Temporada", "Data", "Lloc", "Latitud", "Longitud",
+        "Pais", "Regio", "Serralada", "Orientacio", "Altitud",
+        "Tipus activitat", "Material", "Progressio",
+        "Grup", "Desenc", "Arrossegats", "Ferits", "Morts",
+        "Grau de perill", "Origen", "Desencadenant", "Neu", "Mida allau",
+        "Observacions", "Link", "Fotos"
+    ]
+    
+    ordre_final = [c for c in ordre_desitjat if c in dff.columns]
+    columnes_extra = [c for c in dff.columns if c not in ordre_final]
+    dff = dff[ordre_final + columnes_extra]
 
     dff_shape = dff.shape
     if 'df_editable' not in st.session_state or (st.session_state.get('_df_editable_shape') != dff_shape and not st.session_state.get('editing_table', False)):
@@ -442,3 +455,94 @@ def handle_map_click(click_data, dff):
         st.session_state.selected_accident = nearby
         return {'type': 'accident_selected', 'accident': nearby}
     return None
+
+def render_tracklog_section():
+    if st.session_state.get('data_source') != 'gsheets_editable':
+        return
+        
+    st.markdown("---")
+    st.markdown("### 📋 Tracklog")
+    
+    with st.expander("Registre de canvis", expanded=True):
+        df_track = st.session_state.get('df_tracklog', pd.DataFrame())
+        
+        if not df_track.empty:
+            # Ordenem el Tracklog per mantenir l'últim registre a dalt.
+            # Utilitzem 'Id edicio' o 'Data edicio' si l'ID no existeix encara per algun motiu
+            if 'Id edicio' in df_track.columns:
+                df_view = df_track.sort_values(by='Id edicio', ascending=False)
+            elif 'Data edicio' in df_track.columns:
+                df_view = df_track.sort_values(by='Data edicio', ascending=False)
+            else:
+                df_view = df_track
+
+            # Configuració de la visualització de columnes
+            tracklog_config = {
+                "Id edicio": st.column_config.NumberColumn("Id_edicio", format="%d", width="small"),
+                "Data edicio": st.column_config.TextColumn("Data", width="medium"),
+                "Codi accident": st.column_config.NumberColumn("Codi", format="%d", width="small"),
+                "Actualitzat a la web": st.column_config.TextColumn("Web", width="small"),
+                "Autor": st.column_config.TextColumn("Autor", width="medium"),
+                "Lloc accident": st.column_config.TextColumn("Lloc accident", width="medium"),
+                "Canvis introduits": st.column_config.TextColumn("Canvis introduïts", width="large")
+            }
+
+            # Mostrem el tracklog
+            st.dataframe(df_view, height=175, hide_index=True, use_container_width=True, column_config=tracklog_config)
+        else:
+            st.info("No hi ha entrades al Tracklog en aquest moment.")
+            
+        #st.markdown("#### ➕ Nova entrada manual")
+    with st.form("nou_tracklog_form", clear_on_submit=True):
+        st.markdown("#### Documenta els canvis")
+        c1, c2 = st.columns(2)
+        with c1:
+            autor = st.text_input("Autor (el teu nom)")
+            # Codi accident integer
+            codi = st.number_input("Codi accident vinculat (0 si genèric)", min_value=0, value=0, step=1)
+        with c2:
+            lloc = st.text_input("Lloc de l'accident")
+            actualitzat = st.checkbox("Actualitzat a la web?", value=True)
+            
+        canvis = st.text_area("Canvis introduïts")
+        
+        submitted = st.form_submit_button("Desar entrada al Tracklog", type="primary", use_container_width=True)
+        if submitted:
+            if not autor or not canvis:
+                st.error("❌ L'autor i la descripció dels canvis són obligatoris.")
+            else:
+                try:
+                    # 1. Calcular el proper Id edició
+                    nou_id_edicio = 1
+                    if not df_track.empty and 'Id edicio' in df_track.columns:
+                        maxim_id = pd.to_numeric(df_track['Id edicio'], errors='coerce').max()
+                        if pd.notna(maxim_id):
+                            nou_id_edicio = int(maxim_id) + 1
+
+                    nou_registre = {
+                        "Id edicio": nou_id_edicio,
+                        "Data edicio": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+                        "Autor": autor.strip(),
+                        "Codi accident": int(codi) if codi > 0 else None,
+                        "Lloc accident": lloc.strip(),
+                        "Canvis introduits": canvis.strip(),
+                        "Actualitzat a la web": "Sí" if actualitzat else "No"
+                    }
+                    
+                    nou_df = pd.DataFrame([nou_registre])
+                    
+                    if df_track.empty:
+                        st.session_state.df_tracklog = nou_df
+                    else:
+                        st.session_state.df_tracklog = pd.concat([df_track, nou_df], ignore_index=True)
+                    
+                    # Neteja de NA o nuls abans de l'upload
+                    df_to_save = st.session_state.df_tracklog.copy()
+                    
+                    with st.spinner("Sincronitzant Tracklog al núvol..."):
+                        conn = st.session_state.gsheets_conn
+                        conn.update(worksheet="Tracklog", data=df_to_save)
+                        st.success("✅ Nova entrada afegida amb èxit!")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Error desant al Tracklog: {e}")
