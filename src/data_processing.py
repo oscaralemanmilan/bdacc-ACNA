@@ -84,15 +84,16 @@ def process_data(df):
     # No s'aplica cap filtre geogràfic, es processen totes les coordenades vàlides
     df = df.dropna(subset=["Latitud","Longitud"])
     
-    # 4. Normalització de dates - ELIMINADO: Ahora se hace en load_data con parse_dates
-    # raw = df["Data"].astype(str)
-    # # Primer intenta dia/mes/any (format europeu)
-    # d1 = pd.to_datetime(raw, errors="coerce", dayfirst=True)
-    # # Per a les que fallen, intenta mes/dia/any (format americà)
-    # mask = d1.isna()
-    # d2 = pd.to_datetime(raw[mask], errors="coerce", dayfirst=False)
-    # d1.loc[mask] = d2
-    # df["Data"] = d1
+    # 4. Normalització de dates
+    if "Data" in df.columns:
+        raw = df["Data"].astype(str)
+        # Primer intenta dia/mes/any (format europeu)
+        d1 = pd.to_datetime(raw, errors="coerce", dayfirst=True)
+        # Per a les que fallen, intenta mes/dia/any (format americà)
+        mask = d1.isna()
+        d2 = pd.to_datetime(raw[mask], errors="coerce", dayfirst=False)
+        d1.loc[mask] = d2
+        df["Data"] = d1
     
     # 5. Columnes auxiliars (solo las necesarias)
     df["Any"] = df["Data"].dt.year
@@ -224,8 +225,8 @@ def load_from_gsheet(url):
     
     df = pd.read_csv(csv_url)
     
-    if "Data" in df.columns:
-        df["Data"] = pd.to_datetime(df["Data"], errors="coerce", dayfirst=True)
+    # El processament de dates es farà dins de process_data(df)
+    pass
         
     return process_data(df)
 
