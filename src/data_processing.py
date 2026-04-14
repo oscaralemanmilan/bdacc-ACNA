@@ -122,9 +122,10 @@ def process_data(df):
         if col in df.columns:
             # Tratamiento especial para Temporada (limpiar .0 pero mantener vacíos)
             if col == "Temporada":
-                # Limpiar valores existentes que puedan tener .0 como string
+                # Convertir a string i netejar .0 si existeix (cas de números)
                 s = df[col].astype(str).str.replace('.0', '', regex=False)
-                # MANTENER valores reales: None, "", NaN sin reemplazar
+                # Gestionar els valors que s'han convertit en 'nan' o estan buits
+                s = s.replace(['nan', 'None', '', 'NaN'], "Desconegut")
                 df[col] = s
             else:
                 # MANTENER valores reales: solo limpiar espacios
@@ -289,12 +290,10 @@ def get_column_options(df, column_name):
     if df is None or column_name not in df.columns:
         return []
     
-    # Tratamiento especial para Temporada (limpiar .0 pero mantener vacíos)
     if column_name == "Temporada":
-        # Limpiar valores existentes que puedan tener .0 como string
-        s = df[column_name].dropna().astype(str).str.replace('.0', '', regex=False)
-        # MANTENER valores reales: sin reemplazo masivo
-        return sorted(s.unique().tolist(), key=lambda x: (x.lower()))
+        # Els valors ja estan realment nets per process_data
+        s = df[column_name].dropna()
+        return sorted(s.unique().tolist(), reverse=True) # Temporades recents primer
     elif column_name == "Grau de perill":
         # Tratamiento especial para Grau de perill como texto categórico
         s = df[column_name].dropna().astype(str).str.strip()

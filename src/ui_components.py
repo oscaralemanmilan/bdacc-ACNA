@@ -15,7 +15,7 @@ import streamlit as st
 import os
 import pandas as pd
 from streamlit_gsheets import GSheetsConnection
-from src.data_processing import load_data, load_from_gsheet, get_column_options
+from src.data_processing import load_data, load_from_gsheet, get_column_options, process_data
 from config.settings import COLORS, UI_CONFIG, HTML_TEMPLATES, MAP_CONFIG
 
 
@@ -231,15 +231,8 @@ def create_data_source_sidebar():
                 # Això elimina files que no tenen absolutament cap dada (comunes a GSheets)
                 worksheet = worksheet.dropna(how='all')
 
-                # Convertir columna 'Data' a datetime
-                if 'Data' in worksheet.columns:
-                    worksheet['Data'] = pd.to_datetime(worksheet['Data'], errors='coerce', dayfirst=True)
-                    
-                    # Crear columna Mes para el filtro (extraído de data_processing.py)
-                    from .data_processing import MESOS_CAT
-                    worksheet['Mes'] = worksheet['Data'].dt.month.map(MESOS_CAT)
-                
-                df = worksheet
+                # Processament global de dades (unificat per a tots els orígens)
+                df = process_data(worksheet)
                 st.session_state.data_source = "gsheets_editable"
                 st.session_state.gsheets_conn = conn
                 
